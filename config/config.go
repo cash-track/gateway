@@ -30,7 +30,7 @@ type Config struct {
 var Global Config
 
 func (c *Config) Load() {
-	c.Address = getEnv("GATEWAY_ADDRESS", ":8080")
+	c.Address = getEnv("GATEWAY_ADDRESS", ":80")
 	c.Compress = getEnv("GATEWAY_COMPRESS", "true") == "true"
 	c.DebugHttp = getEnv("DEBUG_HTTP", "") == "true"
 	c.CaptchaSecret = getEnv("CAPTCHA_SECRET", "")
