@@ -26,6 +26,10 @@ type VerifyResponse struct {
 	ErrorCodes  []string `json:"error-codes,omitempty"`
 }
 
+func init() {
+	newClient()
+}
+
 func newClient() {
 	if client != nil {
 		return
@@ -44,8 +48,6 @@ func newClient() {
 }
 
 func Verify(ctx *fasthttp.RequestCtx) (bool, error) {
-	newClient()
-
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
 	defer func() {
@@ -53,12 +55,13 @@ func Verify(ctx *fasthttp.RequestCtx) (bool, error) {
 		fasthttp.ReleaseResponse(resp)
 	}()
 
+	clientIp := headers.GetClientIPFromContext(ctx)
 	challenge := ctx.Request.Header.Peek(headers.XCtCaptchaChallenge)
 	if challenge == nil || string(challenge) == "" {
+		log.Printf("[%s] captcha challenge empty", clientIp)
 		return false, nil
 	}
 
-	clientIp := headers.GetClientIPFromContext(ctx)
 	prepareGoogleReCaptchaVerifyRequest(req, challenge, clientIp)
 
 	if err := client.Do(req, resp); err != nil {
@@ -74,6 +77,8 @@ func Verify(ctx *fasthttp.RequestCtx) (bool, error) {
 		log.Printf("[%s] captcha verify unsuccessfull: score %f, errors: %s", clientIp, verifyResponse.Score, strings.Join(verifyResponse.ErrorCodes, ", "))
 		return false, nil
 	}
+
+	log.Printf("[%s] captcha verify: ok", clientIp)
 
 	return true, nil
 }

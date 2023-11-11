@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	prom "github.com/flf2ko/fasthttp-prometheus"
 	"github.com/valyala/fasthttp"
 
 	"github.com/cash-track/gateway/config"
@@ -14,7 +15,8 @@ import (
 func main() {
 	config.Global.Load()
 
-	h := router.New().Handler
+	r := router.New()
+	h := prom.NewPrometheus("http").WrapHandler(r)
 	h = headers.Handler(h)
 	h = headers.CorsHandler(h)
 	h = logger.DebugHandler(h)
