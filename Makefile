@@ -1,8 +1,7 @@
 
 # Local config
-CONTAINER_NAME=gateway
-CONTAINER_PORT_HTTP=80
-CONTAINER_PORT_PROM=2112
+CONTAINER_NAME=cashtrack_gateway
+CONTAINER_PORT_HTTP=8081
 RELEASE_VERSION=0.0.1
 
 REPO=cashtrack/gateway
@@ -31,6 +30,9 @@ start:
       --rm \
       --name $(CONTAINER_NAME) \
       -p $(CONTAINER_PORT_HTTP):80 \
+      --env-file .env \
+      -e HTTPS_ENABLED=false \
+      --net cash-track-local \
       $(IMAGE_DEV)
 
 stop:

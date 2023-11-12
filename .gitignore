@@ -17,5 +17,6 @@
 # Go workspace file
 go.work
 vendor/
+.env
 
 certs

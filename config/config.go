@@ -40,11 +40,9 @@ func (c *Config) Load() {
 	c.WebsiteUrl = getEnv("WEBSITE_URL", "")
 	c.WebAppUrl = getEnv("WEBAPP_URL", "")
 
-	if strings.HasPrefix(c.GatewayUrl, "https") {
-		c.HttpsEnabled = true
-		c.HttpsKey = getEnv("HTTPS_KEY", "")
-		c.HttpsCrt = getEnv("HTTPS_CRT", "")
-	}
+	c.HttpsEnabled = getEnv("HTTPS_ENABLED", "") == "true"
+	c.HttpsKey = getEnv("HTTPS_KEY", "")
+	c.HttpsCrt = getEnv("HTTPS_CRT", "")
 
 	c.CookieDomain = getCookieDomain(c.GatewayUrl)
 	c.CookieSecure = getCookieSecure(c.GatewayUrl)

@@ -48,19 +48,25 @@ func newClient() {
 }
 
 func Verify(ctx *fasthttp.RequestCtx) (bool, error) {
+	clientIp := headers.GetClientIPFromContext(ctx)
+
+	if config.Global.CaptchaSecret == "" {
+		log.Printf("[%s] captcha secret empty, skipping verify", clientIp)
+		return true, nil
+	}
+
+	challenge := ctx.Request.Header.Peek(headers.XCtCaptchaChallenge)
+	if challenge == nil || string(challenge) == "" {
+		log.Printf("[%s] captcha challenge empty", clientIp)
+		return false, nil
+	}
+
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
 	defer func() {
 		fasthttp.ReleaseRequest(req)
 		fasthttp.ReleaseResponse(resp)
 	}()
-
-	clientIp := headers.GetClientIPFromContext(ctx)
-	challenge := ctx.Request.Header.Peek(headers.XCtCaptchaChallenge)
-	if challenge == nil || string(challenge) == "" {
-		log.Printf("[%s] captcha challenge empty", clientIp)
-		return false, nil
-	}
 
 	prepareGoogleReCaptchaVerifyRequest(req, challenge, clientIp)
 
