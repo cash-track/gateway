@@ -10,6 +10,13 @@ import (
 	"github.com/cash-track/gateway/headers"
 )
 
+var (
+	ignorePaths = map[string]bool{
+		"/live":  true,
+		"/ready": true,
+	}
+)
+
 func DebugRequest(req *fasthttp.Request, service string) {
 	if config.Global.DebugHttp {
 		log.Printf("DEBUG REQ %s\n%s", service, req)
@@ -24,9 +31,17 @@ func DebugResponse(resp *fasthttp.Response, service string) {
 
 func DebugHandler(h fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
-		DebugRequest(&ctx.Request, "")
+		_, ignore := ignorePaths[string(ctx.Request.URI().Path())]
+
+		if !ignore {
+			DebugRequest(&ctx.Request, "")
+		}
+
 		h(ctx)
-		DebugResponse(&ctx.Response, "")
+
+		if !ignore {
+			DebugResponse(&ctx.Response, "")
+		}
 	}
 }
 
