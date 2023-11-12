@@ -64,12 +64,6 @@ func getCookieDomain(url string) string {
 	domain = strings.ReplaceAll(domain, "https://", "")
 	domain = strings.ReplaceAll(domain, "/", "")
 
-	if strings.Contains(domain, "localhost") {
-		domain = "localhost"
-	} else {
-		domain += "."
-	}
-
 	if strings.Contains(domain, ":") {
 		list := strings.Split(domain, ":")
 		if len(list) > 0 {

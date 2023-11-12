@@ -26,8 +26,8 @@ var (
 
 func NewClient() {
 	client = &fasthttp.Client{
-		ReadTimeout:                   500 * time.Millisecond,
-		WriteTimeout:                  time.Second,
+		ReadTimeout:                   5 * time.Second,
+		WriteTimeout:                  5 * time.Second,
 		MaxIdleConnDuration:           time.Hour,
 		NoDefaultUserAgentHeader:      true,
 		DisableHeaderNamesNormalizing: true,
