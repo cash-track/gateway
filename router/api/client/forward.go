@@ -22,7 +22,7 @@ func ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) error {
 	remoteIp := headers.GetClientIPFromContext(ctx)
 
 	req.Header.SetMethodBytes(bytes.Clone(ctx.Request.Header.Method()))
-	req.SetRequestURI(prepareRequestURI(ctx.Request.URI().Path(), ctx.Request.URI().QueryString()))
+	copyRequestURI(ctx.Request.URI(), req.URI())
 
 	req.Header.SetContentTypeBytes(headers.ContentTypeJson)
 	req.Header.SetBytesV(headers.Accept, headers.ContentTypeJson)
