@@ -48,21 +48,26 @@ func validateCorsOrigin(ctx *fasthttp.RequestCtx) bool {
 	clientIp := GetClientIPFromContext(ctx)
 	if val := ctx.Response.Header.Peek(AccessControlAllowOrigin); val != nil {
 		// CORS headers were already configured by upstream
-		log.Printf("[%s] CORS validation for origin by upstream: %s", clientIp, val)
+		if config.Global.DebugHttp {
+			log.Printf("[%s] CORS validation for origin by upstream: %s", clientIp, val)
+		}
+
 		return false
 	}
 
 	origin := strings.ToLower(string(ctx.Request.Header.Peek(Origin)))
 	_, ok := config.Global.CorsAllowedOrigins[origin]
 
-	log.Printf("[%s] CORS validation for origin %s by gateway: %v", clientIp, origin, ok)
+	if config.Global.DebugHttp {
+		log.Printf("[%s] CORS validation for origin %s by gateway: %v", clientIp, origin, ok)
+	}
 
 	return ok
 }
 
 func writeCorsAllowedHeaders(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.SetBytesV(AccessControlAllowOrigin, ctx.Request.Header.Peek(Origin))
-	ctx.Response.Header.Set(AccessControlAllowMethods, strings.Join(CorsAllowedMethods, ", "))
-	ctx.Response.Header.Set(AccessControlAllowHeaders, strings.Join(CorsAllowedHeaders, ", "))
+	ctx.Response.Header.Set(AccessControlAllowMethods, strings.Join(CorsAllowedMethods, ","))
+	ctx.Response.Header.Set(AccessControlAllowHeaders, strings.Join(CorsAllowedHeaders, ","))
 	ctx.Response.Header.Set(AccessControlAllowCredentials, "true")
 }

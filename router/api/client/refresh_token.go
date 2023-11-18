@@ -20,7 +20,7 @@ func refreshToken(auth cookie.Auth) (cookie.Auth, error) {
 	}()
 
 	req.Header.SetMethod(fasthttp.MethodPost)
-	req.SetRequestURI(prepareRequestURI(refreshURI, nil))
+	setRequestURI(req.URI(), refreshURI)
 	req.Header.SetContentTypeBytes(headers.ContentTypeJson)
 	req.Header.SetBytesV(headers.Accept, headers.ContentTypeJson)
 	headers.WriteBearerToken(req, auth.RefreshToken)

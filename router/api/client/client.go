@@ -39,12 +39,15 @@ func NewClient() {
 	}
 }
 
-func prepareRequestURI(sourcePath []byte, sourceQuery []byte) string {
-	path := strings.TrimPrefix(string(sourcePath), "/api")
+func setRequestURI(dest *fasthttp.URI, path []byte) {
+	_ = dest.Parse([]byte(config.Global.ApiUrl), nil)
+	dest.SetScheme(config.Global.ApiURI.Scheme)
+	dest.SetHost(config.Global.ApiURI.Host)
+	dest.SetPathBytes(path)
+}
 
-	if sourceQuery != nil {
-		return config.Global.ApiUrl + path + "?" + string(sourceQuery)
-	}
-
-	return config.Global.ApiUrl + path
+func copyRequestURI(src, dest *fasthttp.URI) {
+	path := strings.TrimPrefix(string(src.PathOriginal()), "/api")
+	setRequestURI(dest, []byte(path))
+	dest.SetQueryStringBytes(src.QueryString())
 }

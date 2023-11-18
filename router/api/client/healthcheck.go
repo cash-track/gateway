@@ -18,7 +18,7 @@ func Healthcheck() error {
 	}()
 
 	req.Header.SetMethod(fasthttp.MethodGet)
-	req.SetRequestURI(prepareRequestURI(healthcheckURI, nil))
+	setRequestURI(req.URI(), healthcheckURI)
 	req.Header.SetContentTypeBytes(headers.ContentTypeJson)
 	req.Header.SetBytesV(headers.Accept, headers.ContentTypeJson)
 

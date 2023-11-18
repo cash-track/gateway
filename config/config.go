@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -12,6 +14,7 @@ type Config struct {
 
 	GatewayUrl string
 	ApiUrl     string
+	ApiURI     *url.URL
 	WebsiteUrl string
 	WebAppUrl  string
 
@@ -35,8 +38,14 @@ func (c *Config) Load() {
 	c.DebugHttp = getEnv("DEBUG_HTTP", "") == "true"
 	c.CaptchaSecret = getEnv("CAPTCHA_SECRET", "")
 
-	c.GatewayUrl = getEnv("GATEWAY_URL", "")
 	c.ApiUrl = getEnv("API_URL", "")
+	if u, err := url.Parse(c.ApiUrl); err != nil {
+		panic(fmt.Sprintf("Unexpected API_URL: %s", c.ApiURI))
+	} else {
+		c.ApiURI = u
+	}
+
+	c.GatewayUrl = getEnv("GATEWAY_URL", "")
 	c.WebsiteUrl = getEnv("WEBSITE_URL", "")
 	c.WebAppUrl = getEnv("WEBAPP_URL", "")
 
