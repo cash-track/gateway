@@ -58,5 +58,5 @@ func FullForwarded(ctx *fasthttp.RequestCtx, req *fasthttp.Request, resp *fastht
 
 	line += fmt.Sprintf(" => %s resp %d (%db)", service, resp.StatusCode(), len(resp.Body()))
 
-	log.Printf(line)
+	log.Print(line)
 }
