@@ -1,6 +1,6 @@
 # Gateway
 
-[![quality](https://github.com/cash-track/gateway/actions/workflows/quality.yml/badge.svg)](https://github.com/cash-track/gateway/actions/workflows/quality.yml) [![build](https://github.com/cash-track/gateway/actions/workflows/build.yml/badge.svg)](https://github.com/cash-track/gateway/actions/workflows/build.yml)
+[![quality](https://github.com/cash-track/gateway/actions/workflows/quality.yml/badge.svg)](https://github.com/cash-track/gateway/actions/workflows/quality.yml) [![build](https://github.com/cash-track/gateway/actions/workflows/build.yml/badge.svg)](https://github.com/cash-track/gateway/actions/workflows/build.yml) [![codecov](https://codecov.io/gh/cash-track/gateway/graph/badge.svg?token=OI01X0Y1RK)](https://codecov.io/gh/cash-track/gateway)
 
 API gateway for backend services. Uses transparent HTTP layer transition from client requests to backend services.
 
