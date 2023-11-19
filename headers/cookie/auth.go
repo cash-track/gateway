@@ -51,11 +51,6 @@ func (a Auth) CanRefresh() bool {
 	return a.RefreshToken != ""
 }
 
-func (a Auth) GetAccessTokenExpireDate() time.Time {
-	t, _ := time.Parse(time.RFC3339, a.AccessTokenExpiredAt)
-	return t
-}
-
 func (a Auth) GetRefreshTokenExpireDate() time.Time {
 	t, _ := time.Parse(time.RFC3339, a.RefreshTokenExpiredAt)
 	return t
