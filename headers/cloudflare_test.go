@@ -1,7 +1,6 @@
 package headers
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,9 +17,6 @@ func TestCopyCloudFlareHeaders(t *testing.T) {
 
 	CopyCloudFlareHeaders(&ctx, &req)
 
-	headers := req.Header.String()
-
-	fmt.Printf(headers)
 	assert.Equal(t, "192.168.1.1, 10.0.0.1", string(req.Header.Peek("Cf-Original-Connection-Ip")))
 	assert.Empty(t, req.Header.Peek("Cf-Connection-Ip"))
 	assert.Empty(t, req.Header.Peek("X-Request-Id"))
