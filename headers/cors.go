@@ -1,6 +1,7 @@
 package headers
 
 import (
+	"bytes"
 	"log"
 	"strings"
 
@@ -66,7 +67,7 @@ func validateCorsOrigin(ctx *fasthttp.RequestCtx) bool {
 }
 
 func writeCorsAllowedHeaders(ctx *fasthttp.RequestCtx) {
-	ctx.Response.Header.SetBytesV(AccessControlAllowOrigin, ctx.Request.Header.Peek(Origin))
+	ctx.Response.Header.SetBytesV(AccessControlAllowOrigin, bytes.ToLower(ctx.Request.Header.Peek(Origin)))
 	ctx.Response.Header.Set(AccessControlAllowMethods, strings.Join(CorsAllowedMethods, ","))
 	ctx.Response.Header.Set(AccessControlAllowHeaders, strings.Join(CorsAllowedHeaders, ","))
 	ctx.Response.Header.Set(AccessControlAllowCredentials, "true")

@@ -58,7 +58,7 @@ func CopyFromRequest(ctx *fasthttp.RequestCtx, req *fasthttp.Request, headers []
 			value := copyAll(v)
 			_, single := singleInstanceHeaders[strings.ToLower(key)]
 			if existing := req.Header.PeekAll(key); !single && len(existing) > 0 {
-				value = append(existing, value...)
+				value = append(value, existing...)
 			}
 
 			req.Header.SetBytesV(key, bytes.Join(value, multipleSep))
@@ -72,7 +72,7 @@ func CopyFromResponse(resp *fasthttp.Response, ctx *fasthttp.RequestCtx, headers
 			value := copyAll(v)
 			_, single := singleInstanceHeaders[strings.ToLower(key)]
 			if existing := ctx.Response.Header.PeekAll(key); !single && len(existing) > 0 {
-				value = append(existing, value...)
+				value = append(value, existing...)
 			}
 
 			ctx.Response.Header.SetBytesV(key, bytes.Join(value, multipleSep))
