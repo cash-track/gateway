@@ -14,7 +14,7 @@ const (
 
 // CopyCloudFlareHeaders keep original CloudFlare incoming headers for other services behind gateway
 func CopyCloudFlareHeaders(ctx *fasthttp.RequestCtx, req *fasthttp.Request) {
-	for _, key := range req.Header.PeekKeys() {
+	for _, key := range ctx.Request.Header.PeekKeys() {
 		if !strings.HasPrefix(string(key), CloudFlareIncomingHeaderPrefix) {
 			continue
 		}

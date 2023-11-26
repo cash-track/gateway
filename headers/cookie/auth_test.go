@@ -35,11 +35,7 @@ func TestReadAuthCookie(t *testing.T) {
 		"Guest": {},
 	} {
 		t.Run(name, func(t *testing.T) {
-			ctx := fasthttp.RequestCtx{
-				Request: fasthttp.Request{
-					Header: fasthttp.RequestHeader{},
-				},
-			}
+			ctx := fasthttp.RequestCtx{}
 
 			ctx.Request.Header.SetCookie(AccessTokenCookieName, test.AccessToken)
 			ctx.Request.Header.SetCookie(RefreshTokenCookieName, test.RefreshToken)
@@ -86,11 +82,7 @@ func TestWriteAuthCookie(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			ctx := fasthttp.RequestCtx{
-				Response: fasthttp.Response{
-					Header: fasthttp.ResponseHeader{},
-				},
-			}
+			ctx := fasthttp.RequestCtx{}
 
 			test.Auth.WriteCookie(&ctx)
 
