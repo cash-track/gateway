@@ -12,6 +12,11 @@ import (
 	"github.com/cash-track/gateway/router"
 )
 
+const (
+	readBufferSize  = 1024 * 8
+	writeBufferSize = 1024 * 8
+)
+
 func main() {
 	config.Global.Load()
 
@@ -25,25 +30,31 @@ func main() {
 		h = fasthttp.CompressHandler(h)
 	}
 
+	s := &fasthttp.Server{
+		Handler:         h,
+		ReadBufferSize:  readBufferSize,
+		WriteBufferSize: writeBufferSize,
+	}
+
 	if config.Global.HttpsEnabled {
-		startTls(h)
+		startTls(s)
 	} else {
-		start(h)
+		start(s)
 	}
 }
 
-func start(h fasthttp.RequestHandler) {
+func start(s *fasthttp.Server) {
 	log.Printf("Listening on HTTP %s", config.Global.Address)
 
-	if err := fasthttp.ListenAndServe(config.Global.Address, h); err != nil {
+	if err := s.ListenAndServe(config.Global.Address); err != nil {
 		log.Fatalf("Error in HTTP server: %v", err)
 	}
 }
 
-func startTls(h fasthttp.RequestHandler) {
+func startTls(s *fasthttp.Server) {
 	log.Printf("Listening on HTTPS %s", config.Global.Address)
 
-	if err := fasthttp.ListenAndServeTLS(config.Global.Address, config.Global.HttpsCrt, config.Global.HttpsKey, h); err != nil {
+	if err := s.ListenAndServeTLS(config.Global.Address, config.Global.HttpsCrt, config.Global.HttpsKey); err != nil {
 		log.Fatalf("Error in HTTPS server: %v", err)
 	}
 }
