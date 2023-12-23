@@ -1,13 +1,38 @@
 package client
 
 import (
+	"fmt"
+	"net/url"
 	"testing"
 
+	"github.com/cash-track/gateway/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/valyala/fasthttp"
 
 	"github.com/cash-track/gateway/headers"
 )
+
+func TestForwardRequest(t *testing.T) {
+	config.Global.ApiURI, _ = url.Parse(endpoint)
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+	mock := &MockClient{}
+	mock.MockResponse(func(resp *fasthttp.Response) {
+		resp.SetStatusCode(fasthttp.StatusOK)
+	})
+
+	client = mock
+	err := ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, mock.req)
+	assert.Equal(t, fasthttp.MethodPost, string(mock.req.Header.Method()))
+	assert.Equal(t, fmt.Sprintf("%s%s", endpoint, healthcheckURI), mock.req.URI().String())
+	assert.Equal(t, string(headers.ContentTypeJson), string(mock.req.Header.ContentType()))
+	assert.Equal(t, string(headers.ContentTypeJson), string(mock.req.Header.Peek(headers.Accept)))
+	assert.Equal(t, "192.168.1.1", string(mock.req.Header.Peek(headers.XForwardedFor)))
+}
 
 func TestForwardResponse(t *testing.T) {
 	ctx := fasthttp.RequestCtx{}

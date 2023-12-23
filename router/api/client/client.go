@@ -15,8 +15,12 @@ func init() {
 
 const Service = "API"
 
+type Client interface {
+	Do(req *fasthttp.Request, resp *fasthttp.Response) error
+}
+
 var (
-	client          *fasthttp.Client
+	client          Client
 	methodsWithBody = map[string]bool{
 		fasthttp.MethodPost:  true,
 		fasthttp.MethodPut:   true,
