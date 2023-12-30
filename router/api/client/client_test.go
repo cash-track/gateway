@@ -14,9 +14,12 @@ func TestNewClient(t *testing.T) {
 	NewClient()
 
 	assert.NotNil(t, client)
-	assert.True(t, client.NoDefaultUserAgentHeader)
-	assert.True(t, client.DisableHeaderNamesNormalizing)
-	assert.True(t, client.DisablePathNormalizing)
+
+	if c, ok := client.(*fasthttp.Client); ok {
+		assert.True(t, c.NoDefaultUserAgentHeader)
+		assert.True(t, c.DisableHeaderNamesNormalizing)
+		assert.True(t, c.DisablePathNormalizing)
+	}
 }
 
 func TestSetRequestURI(t *testing.T) {

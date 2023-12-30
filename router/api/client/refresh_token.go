@@ -44,16 +44,18 @@ func refreshToken(auth cookie.Auth) (cookie.Auth, error) {
 
 	logger.DebugResponse(resp, Service)
 
+	if resp.StatusCode() == fasthttp.StatusUnauthorized {
+		// re-login required
+		return newAuth, nil
+	}
+
 	if resp.StatusCode() != fasthttp.StatusOK {
-		return newAuth, fmt.Errorf("refresh token failed")
+		// unexpected status
+		return newAuth, fmt.Errorf("refresh token failed [status %d]: %v", resp.StatusCode(), resp.Body())
 	}
 
 	if err := json.Unmarshal(resp.Body(), &newAuth); err != nil {
 		return newAuth, fmt.Errorf("refresh token unexpected response body: %w", err)
-	}
-
-	if !newAuth.IsLogged() {
-		return newAuth, fmt.Errorf("refresh token unsuccessful")
 	}
 
 	return newAuth, nil
