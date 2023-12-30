@@ -1,3 +1,5 @@
+include .env
+export
 
 # Local config
 CONTAINER_NAME=cashtrack_gateway

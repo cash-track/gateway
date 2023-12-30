@@ -26,11 +26,11 @@ func TestHealthcheckOk(t *testing.T) {
 	err := Healthcheck()
 
 	assert.NoError(t, err)
-	assert.NotNil(t, mock.req)
-	assert.Equal(t, fasthttp.MethodGet, string(mock.req.Header.Method()))
-	assert.Equal(t, fmt.Sprintf("%s%s", endpoint, healthcheckURI), mock.req.URI().String())
-	assert.Equal(t, string(headers.ContentTypeJson), string(mock.req.Header.ContentType()))
-	assert.Equal(t, string(headers.ContentTypeJson), string(mock.req.Header.Peek(headers.Accept)))
+	assert.NotNil(t, mock.GetRequest())
+	assert.Equal(t, fasthttp.MethodGet, string(mock.GetRequest().Header.Method()))
+	assert.Equal(t, fmt.Sprintf("%s%s", endpoint, healthcheckURI), mock.GetRequest().URI().String())
+	assert.Equal(t, string(headers.ContentTypeJson), string(mock.GetRequest().Header.ContentType()))
+	assert.Equal(t, string(headers.ContentTypeJson), string(mock.GetRequest().Header.Peek(headers.Accept)))
 }
 
 func TestHealthcheckFail(t *testing.T) {
@@ -45,7 +45,7 @@ func TestHealthcheckFail(t *testing.T) {
 	err := Healthcheck()
 
 	assert.Error(t, err)
-	assert.NotNil(t, mock.req)
+	assert.NotNil(t, mock.GetRequest())
 }
 
 func TestHealthcheckError(t *testing.T) {
@@ -61,5 +61,5 @@ func TestHealthcheckError(t *testing.T) {
 	err := Healthcheck()
 
 	assert.Error(t, err)
-	assert.NotNil(t, mock.req)
+	assert.NotNil(t, mock.GetRequest())
 }
