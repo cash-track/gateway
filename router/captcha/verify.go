@@ -11,11 +11,12 @@ import (
 
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers"
+	api "github.com/cash-track/gateway/router/api/client"
 )
 
 const verifyUrl = "https://www.google.com/recaptcha/api/siteverify"
 
-var client *fasthttp.Client
+var client api.Client
 
 type VerifyResponse struct {
 	Success     bool     `json:"success"`
