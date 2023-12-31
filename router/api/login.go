@@ -21,10 +21,7 @@ func Login(ctx *fasthttp.RequestCtx) error {
 
 	auth.WriteCookie(ctx)
 
-	b, err := newWebAppRedirect().ToJson()
-	if err != nil {
-		return fmt.Errorf("login response build error: %w", err)
-	}
+	b, _ := newWebAppRedirect().ToJson()
 
 	ctx.Response.SetBody(b)
 
