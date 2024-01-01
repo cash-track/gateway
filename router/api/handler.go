@@ -9,9 +9,8 @@ import (
 	"github.com/cash-track/gateway/captcha"
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers/cookie"
-	"github.com/cash-track/gateway/http"
-	"github.com/cash-track/gateway/router/api/client"
 	"github.com/cash-track/gateway/router/response"
+	"github.com/cash-track/gateway/service/api"
 )
 
 var allowedMethods = map[string]bool{
@@ -23,10 +22,29 @@ var allowedMethods = map[string]bool{
 	fasthttp.MethodOptions: true,
 }
 
-func AuthSetHandler(ctx *fasthttp.RequestCtx) {
-	reCaptcha := captcha.NewGoogleReCaptchaProvider(http.NewFastHttpClient(), config.Global)
+type Handler interface {
+	AuthSetHandler(ctx *fasthttp.RequestCtx)
+	AuthResetHandler(ctx *fasthttp.RequestCtx)
+	FullForwardedHandler(ctx *fasthttp.RequestCtx)
+	Healthcheck() error
+}
 
-	if ok, err := reCaptcha.Verify(ctx); err != nil || !ok {
+type HttpHandler struct {
+	config  config.Config
+	captcha captcha.Provider
+	service api.Service
+}
+
+func NewHttp(config config.Config, service api.Service, captcha captcha.Provider) *HttpHandler {
+	return &HttpHandler{
+		config:  config,
+		captcha: captcha,
+		service: service,
+	}
+}
+
+func (h *HttpHandler) AuthSetHandler(ctx *fasthttp.RequestCtx) {
+	if ok, err := h.captcha.Verify(ctx); err != nil || !ok {
 		if err != nil {
 			response.NewCaptchaErrorResponse(err).Write(ctx)
 			return
@@ -36,26 +54,26 @@ func AuthSetHandler(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
-	FullForwardedHandler(ctx)
+	h.FullForwardedHandler(ctx)
 
-	if err := Login(ctx); err != nil {
+	if err := h.Login(ctx); err != nil {
 		response.ByError(err).Write(ctx)
 	}
 }
 
-func AuthResetHandler(ctx *fasthttp.RequestCtx) {
+func (h *HttpHandler) AuthResetHandler(ctx *fasthttp.RequestCtx) {
 	auth := cookie.ReadAuthCookie(ctx)
 
-	FullForwardedHandlerWithBody(ctx, cookie.Auth{
+	h.FullForwardedHandlerWithBody(ctx, cookie.Auth{
 		RefreshToken: auth.RefreshToken,
 	})
 
-	if err := Logout(ctx); err != nil {
+	if err := h.Logout(ctx); err != nil {
 		response.ByError(err).Write(ctx)
 	}
 }
 
-func FullForwardedHandler(ctx *fasthttp.RequestCtx) {
+func (h *HttpHandler) FullForwardedHandler(ctx *fasthttp.RequestCtx) {
 	if _, ok := allowedMethods[string(ctx.Request.Header.Method())]; !ok {
 		response.ByErrorAndStatus(
 			fmt.Errorf("request method %s is not allowed", ctx.Request.Header.Method()),
@@ -64,14 +82,14 @@ func FullForwardedHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	err := client.ForwardRequest(ctx, nil)
+	err := h.service.ForwardRequest(ctx, nil)
 	if err != nil {
 		response.ByErrorAndStatus(err, fasthttp.StatusBadGateway).Write(ctx)
 		return
 	}
 }
 
-func FullForwardedHandlerWithBody(ctx *fasthttp.RequestCtx, body interface{}) {
+func (h *HttpHandler) FullForwardedHandlerWithBody(ctx *fasthttp.RequestCtx, body interface{}) {
 	if _, ok := allowedMethods[string(ctx.Request.Header.Method())]; !ok {
 		response.ByErrorAndStatus(
 			fmt.Errorf("request method %s is not allowed", ctx.Request.Header.Method()),
@@ -86,8 +104,12 @@ func FullForwardedHandlerWithBody(ctx *fasthttp.RequestCtx, body interface{}) {
 		return
 	}
 
-	if err := client.ForwardRequest(ctx, b); err != nil {
+	if err := h.service.ForwardRequest(ctx, b); err != nil {
 		response.ByErrorAndStatus(err, fasthttp.StatusBadGateway).Write(ctx)
 		return
 	}
+}
+
+func (h *HttpHandler) Healthcheck() error {
+	return h.service.Healthcheck()
 }

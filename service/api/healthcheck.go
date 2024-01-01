@@ -1,4 +1,4 @@
-package client
+package api
 
 import (
 	"fmt"
@@ -11,18 +11,18 @@ import (
 
 var healthcheckURI = []byte("/healthcheck")
 
-func Healthcheck() error {
+func (s *HttpService) Healthcheck() error {
 	req := fasthttp.AcquireRequest()
 	defer func() {
 		fasthttp.ReleaseRequest(req)
 	}()
 
 	req.Header.SetMethod(fasthttp.MethodGet)
-	setRequestURI(req.URI(), healthcheckURI)
+	s.setRequestURI(req.URI(), healthcheckURI)
 	req.Header.SetContentTypeBytes(headers.ContentTypeJson)
 	req.Header.SetBytesV(headers.Accept, headers.ContentTypeJson)
 
-	logger.DebugRequest(req, Service)
+	logger.DebugRequest(req, ServiceId)
 
 	// execute request
 	resp := fasthttp.AcquireResponse()
@@ -30,12 +30,12 @@ func Healthcheck() error {
 		fasthttp.ReleaseResponse(resp)
 	}()
 
-	err := client.Do(req, resp)
+	err := s.http.Do(req, resp)
 	if err != nil {
 		return fmt.Errorf("healthckeck API request error: %w", err)
 	}
 
-	logger.DebugResponse(resp, Service)
+	logger.DebugResponse(resp, ServiceId)
 
 	if resp.StatusCode() != fasthttp.StatusOK {
 		return fmt.Errorf("healthckeck failed [%d], body: %s", resp.StatusCode(), resp.Body())

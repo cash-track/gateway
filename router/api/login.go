@@ -9,7 +9,7 @@ import (
 	"github.com/cash-track/gateway/headers/cookie"
 )
 
-func Login(ctx *fasthttp.RequestCtx) error {
+func (h *HttpHandler) Login(ctx *fasthttp.RequestCtx) error {
 	if ctx.Response.StatusCode() != fasthttp.StatusOK {
 		return nil
 	}
@@ -21,7 +21,7 @@ func Login(ctx *fasthttp.RequestCtx) error {
 
 	auth.WriteCookie(ctx)
 
-	b, _ := newWebAppRedirect().ToJson()
+	b, _ := h.newWebAppRedirect().ToJson()
 
 	ctx.Response.SetBody(b)
 

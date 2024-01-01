@@ -16,7 +16,7 @@ import (
 
 func TestVerify(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewMockClient(ctrl)
+	c := mocks.NewHttpClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
@@ -50,7 +50,7 @@ func TestVerify(t *testing.T) {
 
 func TestVerifyUnsuccessful(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewMockClient(ctrl)
+	c := mocks.NewHttpClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
@@ -84,7 +84,7 @@ func TestVerifyUnsuccessful(t *testing.T) {
 
 func TestVerifyEmptySecret(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewMockClient(ctrl)
+	c := mocks.NewHttpClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
@@ -104,7 +104,7 @@ func TestVerifyEmptySecret(t *testing.T) {
 
 func TestVerifyEmptyChallenge(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewMockClient(ctrl)
+	c := mocks.NewHttpClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
@@ -124,7 +124,7 @@ func TestVerifyEmptyChallenge(t *testing.T) {
 
 func TestVerifyRequestFail(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewMockClient(ctrl)
+	c := mocks.NewHttpClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
@@ -145,7 +145,7 @@ func TestVerifyRequestFail(t *testing.T) {
 
 func TestVerifyBadResponse(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewMockClient(ctrl)
+	c := mocks.NewHttpClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})

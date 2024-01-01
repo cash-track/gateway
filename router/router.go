@@ -3,19 +3,18 @@ package router
 import (
 	"github.com/fasthttp/router"
 
-	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/router/api"
 )
 
 type Router struct {
 	*router.Router
-	config config.Config
+	api api.Handler
 }
 
-func New(config config.Config) *Router {
+func New(api api.Handler) *Router {
 	r := &Router{
 		Router: router.New(),
-		config: config,
+		api:    api,
 	}
 	r.register()
 	return r
@@ -25,9 +24,9 @@ func (r *Router) register() {
 	r.ANY("/live", r.LiveHandler)
 	r.ANY("/ready", r.ReadyHandler)
 
-	r.POST("/api/auth/login", api.AuthSetHandler)
-	r.POST("/api/auth/register", api.AuthSetHandler)
-	r.POST("/api/auth/provider/google", api.AuthSetHandler)
-	r.POST("/api/auth/logout", api.AuthResetHandler)
-	r.ANY("/api/{path:*}", api.FullForwardedHandler)
+	r.POST("/api/auth/login", r.api.AuthSetHandler)
+	r.POST("/api/auth/register", r.api.AuthSetHandler)
+	r.POST("/api/auth/provider/google", r.api.AuthSetHandler)
+	r.POST("/api/auth/logout", r.api.AuthResetHandler)
+	r.ANY("/api/{path:*}", r.api.FullForwardedHandler)
 }

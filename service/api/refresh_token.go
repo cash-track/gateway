@@ -1,4 +1,4 @@
-package client
+package api
 
 import (
 	"encoding/json"
@@ -13,14 +13,14 @@ import (
 
 var refreshURI = []byte("/auth/refresh")
 
-func refreshToken(auth cookie.Auth) (cookie.Auth, error) {
+func (s *HttpService) refreshToken(auth cookie.Auth) (cookie.Auth, error) {
 	req := fasthttp.AcquireRequest()
 	defer func() {
 		fasthttp.ReleaseRequest(req)
 	}()
 
 	req.Header.SetMethod(fasthttp.MethodPost)
-	setRequestURI(req.URI(), refreshURI)
+	s.setRequestURI(req.URI(), refreshURI)
 	req.Header.SetContentTypeBytes(headers.ContentTypeJson)
 	req.Header.SetBytesV(headers.Accept, headers.ContentTypeJson)
 	headers.WriteBearerToken(req, auth.RefreshToken)
@@ -28,7 +28,7 @@ func refreshToken(auth cookie.Auth) (cookie.Auth, error) {
 	data, _ := json.Marshal(cookie.Auth{AccessToken: auth.AccessToken})
 	req.SetBody(data)
 
-	logger.DebugRequest(req, Service)
+	logger.DebugRequest(req, ServiceId)
 
 	// execute request
 	resp := fasthttp.AcquireResponse()
@@ -37,12 +37,12 @@ func refreshToken(auth cookie.Auth) (cookie.Auth, error) {
 	}()
 
 	newAuth := cookie.Auth{}
-	err := client.Do(req, resp)
+	err := s.http.Do(req, resp)
 	if err != nil {
 		return newAuth, fmt.Errorf("refresh token API request error: %w", err)
 	}
 
-	logger.DebugResponse(resp, Service)
+	logger.DebugResponse(resp, ServiceId)
 
 	if resp.StatusCode() == fasthttp.StatusUnauthorized {
 		// re-login required

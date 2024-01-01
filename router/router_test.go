@@ -3,12 +3,16 @@ package router
 import (
 	"testing"
 
-	"github.com/cash-track/gateway/config"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
+
+	"github.com/cash-track/gateway/mocks"
 )
 
 func TestNew(t *testing.T) {
-	r := New(config.Config{})
+	ctrl := gomock.NewController(t)
+	h := mocks.NewApiHandlerMock(ctrl)
+	r := New(h)
 
 	l := r.List()
 

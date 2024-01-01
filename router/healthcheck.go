@@ -4,8 +4,6 @@ import (
 	"log"
 
 	"github.com/valyala/fasthttp"
-
-	api "github.com/cash-track/gateway/router/api/client"
 )
 
 var (
@@ -21,7 +19,7 @@ func (r *Router) LiveHandler(ctx *fasthttp.RequestCtx) {
 
 // ReadyHandler check all dependency for service readiness
 func (r *Router) ReadyHandler(ctx *fasthttp.RequestCtx) {
-	if err := api.Healthcheck(); err != nil {
+	if err := r.api.Healthcheck(); err != nil {
 		log.Printf("API not ready: %s", err.Error())
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 		ctx.SetBody(bodyApiNok)

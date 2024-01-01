@@ -6,10 +6,14 @@ import (
 	prom "github.com/flf2ko/fasthttp-prometheus"
 	"github.com/valyala/fasthttp"
 
+	"github.com/cash-track/gateway/captcha"
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers"
+	"github.com/cash-track/gateway/http"
 	"github.com/cash-track/gateway/logger"
 	"github.com/cash-track/gateway/router"
+	apiHandler "github.com/cash-track/gateway/router/api"
+	apiService "github.com/cash-track/gateway/service/api"
 )
 
 const (
@@ -20,7 +24,13 @@ const (
 func main() {
 	config.Global.Load()
 
-	r := router.New(config.Global)
+	r := router.New(
+		apiHandler.NewHttp(
+			config.Global,
+			apiService.NewHttp(http.NewFastHttpClient(), config.Global),
+			captcha.NewGoogleReCaptchaProvider(http.NewFastHttpClient(), config.Global),
+		),
+	)
 	h := prom.NewPrometheus("http").WrapHandler(r.Router)
 	h = headers.Handler(h)
 	h = headers.CorsHandler(h)
