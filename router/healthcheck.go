@@ -1,11 +1,11 @@
-package healthcheck
+package router
 
 import (
 	"log"
 
 	"github.com/valyala/fasthttp"
 
-	apiClient "github.com/cash-track/gateway/router/api/client"
+	api "github.com/cash-track/gateway/router/api/client"
 )
 
 var (
@@ -14,14 +14,14 @@ var (
 )
 
 // LiveHandler consider liveness check successful if request reached the handler
-func LiveHandler(ctx *fasthttp.RequestCtx) {
+func (r *Router) LiveHandler(ctx *fasthttp.RequestCtx) {
 	ctx.SetStatusCode(fasthttp.StatusOK)
 	ctx.SetBody(bodyOk)
 }
 
 // ReadyHandler check all dependency for service readiness
-func ReadyHandler(ctx *fasthttp.RequestCtx) {
-	if err := apiClient.Healthcheck(); err != nil {
+func (r *Router) ReadyHandler(ctx *fasthttp.RequestCtx) {
+	if err := api.Healthcheck(); err != nil {
 		log.Printf("API not ready: %s", err.Error())
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 		ctx.SetBody(bodyApiNok)

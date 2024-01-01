@@ -3,11 +3,12 @@ package router
 import (
 	"testing"
 
+	"github.com/cash-track/gateway/config"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNew(t *testing.T) {
-	r := New()
+	r := New(config.Config{})
 
 	l := r.List()
 

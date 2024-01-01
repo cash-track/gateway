@@ -6,11 +6,11 @@ import (
 
 	"github.com/valyala/fasthttp"
 
+	"github.com/cash-track/gateway/captcha"
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers/cookie"
 	"github.com/cash-track/gateway/http"
 	"github.com/cash-track/gateway/router/api/client"
-	"github.com/cash-track/gateway/router/captcha"
 	"github.com/cash-track/gateway/router/response"
 )
 

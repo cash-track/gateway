@@ -20,8 +20,8 @@ const (
 func main() {
 	config.Global.Load()
 
-	r := router.New()
-	h := prom.NewPrometheus("http").WrapHandler(r)
+	r := router.New(config.Global)
+	h := prom.NewPrometheus("http").WrapHandler(r.Router)
 	h = headers.Handler(h)
 	h = headers.CorsHandler(h)
 	h = logger.DebugHandler(h)
