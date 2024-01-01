@@ -6,7 +6,9 @@ import (
 
 	"github.com/valyala/fasthttp"
 
+	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers/cookie"
+	"github.com/cash-track/gateway/http"
 	"github.com/cash-track/gateway/router/api/client"
 	"github.com/cash-track/gateway/router/captcha"
 	"github.com/cash-track/gateway/router/response"
@@ -22,7 +24,9 @@ var allowedMethods = map[string]bool{
 }
 
 func AuthSetHandler(ctx *fasthttp.RequestCtx) {
-	if ok, err := captcha.Verify(ctx); err != nil || !ok {
+	reCaptcha := captcha.NewGoogleReCaptchaProvider(http.NewFastHttpClient(), config.Global)
+
+	if ok, err := reCaptcha.Verify(ctx); err != nil || !ok {
 		if err != nil {
 			response.NewCaptchaErrorResponse(err).Write(ctx)
 			return

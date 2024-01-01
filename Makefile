@@ -11,7 +11,7 @@ IMAGE_RELEASE=$(REPO):$(RELEASE_VERSION)
 IMAGE_DEV=$(REPO):dev
 IMAGE_LATEST=$(REPO):latest
 
-.PHONY: run test build tag push start stop
+.PHONY: run test build tag push start stop mock-gen
 
 run:
 	go run -race main.go
@@ -42,3 +42,8 @@ start:
 
 stop:
 	docker stop $(CONTAINER_NAME)
+
+mock-gen:
+	go install go.uber.org/mock/mockgen@latest
+	mockgen -source=http/client.go -package=mocks -destination=mocks/http_client_mock.go Client
+

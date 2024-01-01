@@ -3,10 +3,10 @@ module github.com/cash-track/gateway
 go 1.21
 
 require (
-	github.com/fasthttp/router v1.4.21
+	github.com/fasthttp/router v1.4.22
 	github.com/flf2ko/fasthttp-prometheus v0.1.0
 	github.com/stretchr/testify v1.8.0
-	github.com/valyala/fasthttp v1.50.0
+	github.com/valyala/fasthttp v1.51.0
 )
 
 require (
@@ -26,7 +26,10 @@ require (
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/savsgio/gotils v0.0.0-20230208104028-c358bd845dee // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	golang.org/x/sys v0.6.0 // indirect
+	go.uber.org/mock v0.4.0 // indirect
+	golang.org/x/mod v0.11.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/tools v0.2.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
