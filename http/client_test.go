@@ -21,3 +21,12 @@ func TestWithReadTimeout(t *testing.T) {
 
 	assert.Equal(t, 1*time.Second, client.ReadTimeout)
 }
+
+func TestWithWriteTimeout(t *testing.T) {
+	client := FastHttpClient{
+		Client: &fasthttp.Client{},
+	}
+	client.WithWriteTimeout(1 * time.Second)
+
+	assert.Equal(t, 1*time.Second, client.WriteTimeout)
+}
