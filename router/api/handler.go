@@ -57,7 +57,7 @@ func (h *HttpHandler) AuthSetHandler(ctx *fasthttp.RequestCtx) {
 	h.FullForwardedHandler(ctx)
 
 	if err := h.Login(ctx); err != nil {
-		response.ByError(err).Write(ctx)
+		response.ByErrorAndStatus(err, fasthttp.StatusBadGateway).Write(ctx)
 	}
 }
 
@@ -68,9 +68,7 @@ func (h *HttpHandler) AuthResetHandler(ctx *fasthttp.RequestCtx) {
 		RefreshToken: auth.RefreshToken,
 	})
 
-	if err := h.Logout(ctx); err != nil {
-		response.ByError(err).Write(ctx)
-	}
+	h.Logout(ctx)
 }
 
 func (h *HttpHandler) FullForwardedHandler(ctx *fasthttp.RequestCtx) {

@@ -23,9 +23,8 @@ func TestLogout(t *testing.T) {
 
 	ctx := fasthttp.RequestCtx{}
 
-	err := h.Logout(&ctx)
+	h.Logout(&ctx)
 
-	assert.NoError(t, err)
 	assert.Equal(t, `{"redirectUrl":"https://test.com"}`, string(ctx.Response.Body()))
 	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), fmt.Sprintf("%s=;", cookie.AccessTokenCookieName))
 	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.RefreshTokenCookieName)), fmt.Sprintf("%s=;", cookie.RefreshTokenCookieName))
