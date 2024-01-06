@@ -2,20 +2,10 @@ package api
 
 import (
 	"encoding/json"
-
-	"github.com/cash-track/gateway/config"
 )
 
 type redirectResponse struct {
 	RedirectUrl string `json:"redirectUrl"`
-}
-
-func newWebAppRedirect() *redirectResponse {
-	return newRedirectResponse(config.Global.WebAppUrl)
-}
-
-func newWebsiteRedirect() *redirectResponse {
-	return newRedirectResponse(config.Global.WebsiteUrl)
 }
 
 func newRedirectResponse(url string) *redirectResponse {
@@ -24,4 +14,12 @@ func newRedirectResponse(url string) *redirectResponse {
 
 func (r *redirectResponse) ToJson() ([]byte, error) {
 	return json.Marshal(r)
+}
+
+func (h *HttpHandler) newWebAppRedirect() *redirectResponse {
+	return newRedirectResponse(h.config.WebAppUrl)
+}
+
+func (h *HttpHandler) newWebsiteRedirect() *redirectResponse {
+	return newRedirectResponse(h.config.WebsiteUrl)
 }

@@ -1,4 +1,4 @@
-package client
+package api
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 	"github.com/cash-track/gateway/logger"
 )
 
-func ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) error {
+func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) error {
 	// prepare req based on incoming ctx.Request
 	req := fasthttp.AcquireRequest()
 	defer func() {
@@ -22,7 +22,7 @@ func ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) error {
 	remoteIp := headers.GetClientIPFromContext(ctx)
 
 	req.Header.SetMethodBytes(bytes.Clone(ctx.Request.Header.Method()))
-	copyRequestURI(ctx.Request.URI(), req.URI())
+	s.copyRequestURI(ctx.Request.URI(), req.URI())
 
 	req.Header.SetContentTypeBytes(headers.ContentTypeJson)
 	req.Header.SetBytesV(headers.Accept, headers.ContentTypeJson)
@@ -55,7 +55,7 @@ func ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) error {
 		}
 	}
 
-	logger.DebugRequest(req, Service)
+	logger.DebugRequest(req, ServiceId)
 
 	// execute request
 	resp := fasthttp.AcquireResponse()
@@ -63,19 +63,19 @@ func ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) error {
 		fasthttp.ReleaseResponse(resp)
 	}()
 
-	if err := client.Do(req, resp); err != nil {
+	if err := s.http.Do(req, resp); err != nil {
 		return fmt.Errorf("API request error: %w", err)
 	}
 
-	logger.DebugResponse(resp, Service)
-	logger.FullForwarded(ctx, req, resp, Service)
+	logger.DebugResponse(resp, ServiceId)
+	logger.FullForwarded(ctx, req, resp, ServiceId)
 
 	if !auth.IsLogged() || !auth.CanRefresh() || resp.StatusCode() != fasthttp.StatusUnauthorized {
-		return ForwardResponse(ctx, resp)
+		return forwardResponse(ctx, resp)
 	}
 
 	// perform refresh token
-	newAuth, err := refreshToken(auth)
+	newAuth, err := s.refreshToken(auth)
 	if err != nil {
 		log.Printf("[%s] refresh token attempt: %s", remoteIp, err.Error())
 	}
@@ -84,19 +84,19 @@ func ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) error {
 		headers.WriteBearerToken(req, newAuth.AccessToken)
 
 		// execute request 2nd attempt
-		if err := client.Do(req, resp); err != nil {
+		if err := s.http.Do(req, resp); err != nil {
 			return fmt.Errorf("API request with fresh token error: %w", err)
 		}
 
-		logger.DebugResponse(resp, Service)
+		logger.DebugResponse(resp, ServiceId)
 	}
 
 	newAuth.WriteCookie(ctx)
 
-	return ForwardResponse(ctx, resp)
+	return forwardResponse(ctx, resp)
 }
 
-func ForwardResponse(ctx *fasthttp.RequestCtx, resp *fasthttp.Response) error {
+func forwardResponse(ctx *fasthttp.RequestCtx, resp *fasthttp.Response) error {
 	ctx.SetStatusCode(resp.StatusCode())
 	ctx.SetBody(bytes.Clone(resp.Body()))
 

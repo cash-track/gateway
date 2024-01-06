@@ -11,14 +11,21 @@ import (
 
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers"
-	api "github.com/cash-track/gateway/router/api/client"
+	"github.com/cash-track/gateway/http"
 )
 
-const verifyUrl = "https://www.google.com/recaptcha/api/siteverify"
+const (
+	googleApiReCaptchaVerifyUrl = "https://www.google.com/recaptcha/api/siteverify"
+	googleApiReadTimeout        = 500 * time.Millisecond
+	googleApiWriteTimeout       = time.Second
+)
 
-var client api.Client
+type GoogleReCaptchaProvider struct {
+	client http.Client
+	secret string
+}
 
-type VerifyResponse struct {
+type googleReCaptchaVerifyResponse struct {
 	Success     bool     `json:"success"`
 	ChallengeTS string   `json:"challenge_ts,omitempty"`
 	Hostname    string   `json:"hostname,omitempty"`
@@ -27,31 +34,20 @@ type VerifyResponse struct {
 	ErrorCodes  []string `json:"error-codes,omitempty"`
 }
 
-func init() {
-	newClient()
-}
+func NewGoogleReCaptchaProvider(httpClient http.Client, options config.Config) *GoogleReCaptchaProvider {
+	httpClient.WithReadTimeout(googleApiReadTimeout)
+	httpClient.WithWriteTimeout(googleApiWriteTimeout)
 
-func newClient() {
-	if client != nil {
-		return
-	}
-
-	client = &fasthttp.Client{
-		ReadTimeout:              500 * time.Millisecond,
-		WriteTimeout:             time.Second,
-		MaxIdleConnDuration:      time.Hour,
-		NoDefaultUserAgentHeader: true,
-		Dial: (&fasthttp.TCPDialer{
-			Concurrency:      4096,
-			DNSCacheDuration: time.Hour,
-		}).Dial,
+	return &GoogleReCaptchaProvider{
+		client: httpClient,
+		secret: options.CaptchaSecret,
 	}
 }
 
-func Verify(ctx *fasthttp.RequestCtx) (bool, error) {
+func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error) {
 	clientIp := headers.GetClientIPFromContext(ctx)
 
-	if config.Global.CaptchaSecret == "" {
+	if p.secret == "" {
 		log.Printf("[%s] captcha secret empty, skipping verify", clientIp)
 		return true, nil
 	}
@@ -69,19 +65,19 @@ func Verify(ctx *fasthttp.RequestCtx) (bool, error) {
 		fasthttp.ReleaseResponse(resp)
 	}()
 
-	prepareGoogleReCaptchaVerifyRequest(req, challenge, clientIp)
+	p.buildReq(req, challenge, clientIp)
 
-	if err := client.Do(req, resp); err != nil {
+	if err := p.client.Do(req, resp); err != nil {
 		return false, fmt.Errorf("captcha verify request error: %w", err)
 	}
 
-	verifyResponse := VerifyResponse{}
-	if err := json.Unmarshal(resp.Body(), &verifyResponse); err != nil {
+	verifyResp := googleReCaptchaVerifyResponse{}
+	if err := json.Unmarshal(resp.Body(), &verifyResp); err != nil {
 		return false, fmt.Errorf("captcha verify response unexpected: %w", err)
 	}
 
-	if !verifyResponse.Success {
-		log.Printf("[%s] captcha verify unsuccessfull: score %f, errors: %s", clientIp, verifyResponse.Score, strings.Join(verifyResponse.ErrorCodes, ", "))
+	if !verifyResp.Success {
+		log.Printf("[%s] captcha verify unsuccessfull: score %f, errors: %s", clientIp, verifyResp.Score, strings.Join(verifyResp.ErrorCodes, ", "))
 		return false, nil
 	}
 
@@ -90,11 +86,11 @@ func Verify(ctx *fasthttp.RequestCtx) (bool, error) {
 	return true, nil
 }
 
-func prepareGoogleReCaptchaVerifyRequest(req *fasthttp.Request, challenge []byte, clientIp string) {
-	req.SetRequestURI(verifyUrl)
+func (p *GoogleReCaptchaProvider) buildReq(req *fasthttp.Request, challenge []byte, clientIp string) {
+	req.SetRequestURI(googleApiReCaptchaVerifyUrl)
 	req.Header.SetMethod(fasthttp.MethodPost)
 	req.Header.SetContentTypeBytes(headers.ContentTypeForm)
-	req.PostArgs().Set("secret", config.Global.CaptchaSecret)
+	req.PostArgs().Set("secret", p.secret)
 	req.PostArgs().Set("remoteip", clientIp)
 	req.PostArgs().SetBytesV("response", challenge)
 }

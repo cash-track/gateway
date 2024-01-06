@@ -6,19 +6,25 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/valyala/fasthttp"
+	"go.uber.org/mock/gomock"
 
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers/cookie"
+	"github.com/cash-track/gateway/mocks"
 )
 
 func TestLogout(t *testing.T) {
-	config.Global.WebsiteUrl = "https://test.com"
+	ctrl := gomock.NewController(t)
+	s := mocks.NewApiServiceMock(ctrl)
+	c := mocks.NewCaptchaProviderMock(ctrl)
+	h := NewHttp(config.Config{
+		WebsiteUrl: "https://test.com",
+	}, s, c)
 
 	ctx := fasthttp.RequestCtx{}
 
-	err := Logout(&ctx)
+	h.Logout(&ctx)
 
-	assert.NoError(t, err)
 	assert.Equal(t, `{"redirectUrl":"https://test.com"}`, string(ctx.Response.Body()))
 	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), fmt.Sprintf("%s=;", cookie.AccessTokenCookieName))
 	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.RefreshTokenCookieName)), fmt.Sprintf("%s=;", cookie.RefreshTokenCookieName))

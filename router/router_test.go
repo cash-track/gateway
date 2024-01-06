@@ -4,10 +4,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
+
+	"github.com/cash-track/gateway/mocks"
 )
 
 func TestNew(t *testing.T) {
-	r := New()
+	ctrl := gomock.NewController(t)
+	h := mocks.NewApiHandlerMock(ctrl)
+	r := New(h)
 
 	l := r.List()
 
