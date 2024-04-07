@@ -102,6 +102,27 @@ func TestVerifyEmptySecret(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestVerifyOptions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	c := mocks.NewHttpClientMock(ctrl)
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
+	ctx.Request.Header.SetMethod(fasthttp.MethodOptions)
+	ctx.Request.Header.Set(headers.XCtCaptchaChallenge, "captcha_challenge_2")
+
+	c.EXPECT().WithReadTimeout(gomock.Eq(googleApiReadTimeout))
+	c.EXPECT().WithWriteTimeout(gomock.Eq(googleApiWriteTimeout))
+
+	p := NewGoogleReCaptchaProvider(c, config.Config{
+		CaptchaSecret: "captcha_secret_1",
+	})
+	state, err := p.Verify(&ctx)
+
+	assert.True(t, state)
+	assert.NoError(t, err)
+}
+
 func TestVerifyEmptyChallenge(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	c := mocks.NewHttpClientMock(ctrl)

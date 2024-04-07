@@ -71,4 +71,8 @@ func writeCorsAllowedHeaders(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set(AccessControlAllowMethods, strings.Join(CorsAllowedMethods, ","))
 	ctx.Response.Header.Set(AccessControlAllowHeaders, strings.Join(CorsAllowedHeaders, ","))
 	ctx.Response.Header.Set(AccessControlAllowCredentials, "true")
+
+	if string(ctx.Request.Header.Method()) == fasthttp.MethodOptions {
+		ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)
+	}
 }
