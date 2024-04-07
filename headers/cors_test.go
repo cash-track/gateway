@@ -27,6 +27,18 @@ func TestCorsHandler(t *testing.T) {
 		assert.Equal(t, "test.com", string(ctx.Response.Header.Peek(AccessControlAllowOrigin)))
 	})
 
+	t.Run("AllowOptionsStatusAlwaysOk", func(t *testing.T) {
+		ctx := fasthttp.RequestCtx{}
+		ctx.Request.Header.SetMethod(fasthttp.MethodOptions)
+		ctx.Request.Header.Set(Origin, "Test.Com")
+		ctx.Request.Header.Set(XForwardedFor, "127.0.0.1")
+
+		handler := CorsHandler(func(ctx *fasthttp.RequestCtx) {})
+		handler(&ctx)
+
+		assert.Equal(t, fasthttp.StatusOK, ctx.Response.StatusCode())
+	})
+
 	t.Run("RejectIgnorePath", func(t *testing.T) {
 		ctx := fasthttp.RequestCtx{}
 		ctx.Request.Header.Set(Origin, "a.Test.Com")

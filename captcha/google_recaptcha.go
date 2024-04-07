@@ -52,6 +52,10 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 		return true, nil
 	}
 
+	if string(ctx.Request.Header.Method()) == fasthttp.MethodOptions {
+		return true, nil
+	}
+
 	challenge := ctx.Request.Header.Peek(headers.XCtCaptchaChallenge)
 	if challenge == nil || string(challenge) == "" {
 		log.Printf("[%s] captcha challenge empty", clientIp)
