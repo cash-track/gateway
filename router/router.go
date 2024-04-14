@@ -25,6 +25,8 @@ func (r *Router) register() {
 	r.ANY("/ready", r.ReadyHandler)
 
 	r.POST("/api/auth/login", r.api.AuthSetHandler)
+	r.POST("/api/auth/login/passkey", r.api.AuthSetHandler)
+	r.POST("/api/auth/login/passkey/init", r.api.CaptchaVerifyHandler)
 	r.POST("/api/auth/register", r.api.AuthSetHandler)
 	r.POST("/api/auth/provider/google", r.api.AuthSetHandler)
 	r.POST("/api/auth/logout", r.api.AuthResetHandler)

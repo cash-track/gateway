@@ -25,6 +25,7 @@ var allowedMethods = map[string]bool{
 type Handler interface {
 	AuthSetHandler(ctx *fasthttp.RequestCtx)
 	AuthResetHandler(ctx *fasthttp.RequestCtx)
+	CaptchaVerifyHandler(ctx *fasthttp.RequestCtx)
 	FullForwardedHandler(ctx *fasthttp.RequestCtx)
 	Healthcheck() error
 }
@@ -44,6 +45,14 @@ func NewHttp(config config.Config, service api.Service, captcha captcha.Provider
 }
 
 func (h *HttpHandler) AuthSetHandler(ctx *fasthttp.RequestCtx) {
+	h.CaptchaVerifyHandler(ctx)
+
+	if err := h.Login(ctx); err != nil {
+		response.ByErrorAndStatus(err, fasthttp.StatusBadGateway).Write(ctx)
+	}
+}
+
+func (h *HttpHandler) CaptchaVerifyHandler(ctx *fasthttp.RequestCtx) {
 	if ok, err := h.captcha.Verify(ctx); err != nil || !ok {
 		if err != nil {
 			response.NewCaptchaErrorResponse(err).Write(ctx)
@@ -55,10 +64,6 @@ func (h *HttpHandler) AuthSetHandler(ctx *fasthttp.RequestCtx) {
 	}
 
 	h.FullForwardedHandler(ctx)
-
-	if err := h.Login(ctx); err != nil {
-		response.ByErrorAndStatus(err, fasthttp.StatusBadGateway).Write(ctx)
-	}
 }
 
 func (h *HttpHandler) AuthResetHandler(ctx *fasthttp.RequestCtx) {
