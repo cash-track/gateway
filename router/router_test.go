@@ -25,8 +25,10 @@ func TestNew(t *testing.T) {
 	assert.Contains(t, l["*"], "/api/{path:*}")
 
 	assert.NotNil(t, l["POST"])
-	assert.Len(t, l["POST"], 4)
+	assert.Len(t, l["POST"], 6)
 	assert.Contains(t, l["POST"], "/api/auth/login")
+	assert.Contains(t, l["POST"], "/api/auth/login/passkey")
+	assert.Contains(t, l["POST"], "/api/auth/login/passkey/init")
 	assert.Contains(t, l["POST"], "/api/auth/logout")
 	assert.Contains(t, l["POST"], "/api/auth/register")
 	assert.Contains(t, l["POST"], "/api/auth/provider/google")
