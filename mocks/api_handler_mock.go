@@ -63,6 +63,18 @@ func (mr *ApiHandlerMockMockRecorder) AuthSetHandler(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthSetHandler", reflect.TypeOf((*ApiHandlerMock)(nil).AuthSetHandler), ctx)
 }
 
+// CaptchaVerifyHandler mocks base method.
+func (m *ApiHandlerMock) CaptchaVerifyHandler(ctx *fasthttp.RequestCtx) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "CaptchaVerifyHandler", ctx)
+}
+
+// CaptchaVerifyHandler indicates an expected call of CaptchaVerifyHandler.
+func (mr *ApiHandlerMockMockRecorder) CaptchaVerifyHandler(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CaptchaVerifyHandler", reflect.TypeOf((*ApiHandlerMock)(nil).CaptchaVerifyHandler), ctx)
+}
+
 // FullForwardedHandler mocks base method.
 func (m *ApiHandlerMock) FullForwardedHandler(ctx *fasthttp.RequestCtx) {
 	m.ctrl.T.Helper()
