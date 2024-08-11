@@ -9,7 +9,7 @@ import (
 	"github.com/cash-track/gateway/captcha"
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers"
-	"github.com/cash-track/gateway/http"
+	"github.com/cash-track/gateway/http/retryhttp"
 	"github.com/cash-track/gateway/logger"
 	"github.com/cash-track/gateway/router"
 	apiHandler "github.com/cash-track/gateway/router/api"
@@ -27,8 +27,8 @@ func main() {
 	r := router.New(
 		apiHandler.NewHttp(
 			config.Global,
-			apiService.NewHttp(http.NewFastHttpClient(), config.Global),
-			captcha.NewGoogleReCaptchaProvider(http.NewFastHttpClient(), config.Global),
+			apiService.NewHttp(retryhttp.NewFastHttpRetryClient(), config.Global),
+			captcha.NewGoogleReCaptchaProvider(retryhttp.NewFastHttpRetryClient(), config.Global),
 		),
 	)
 	h := prom.NewPrometheus("http").WrapHandler(r.Router)

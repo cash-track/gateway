@@ -14,9 +14,10 @@ import (
 
 func TestNewClient(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 
 	s := NewHttp(h, config.Config{})
 
@@ -27,9 +28,10 @@ func TestSetRequestURI(t *testing.T) {
 	apiUrl, _ := url.Parse("http://api.test.com")
 
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
 	})
@@ -45,9 +47,10 @@ func TestCopyRequestURI(t *testing.T) {
 	apiUrl, _ := url.Parse("http://api.test.com")
 
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
 	})

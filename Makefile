@@ -45,7 +45,8 @@ stop:
 
 mock-gen:
 	go install go.uber.org/mock/mockgen@latest
-	mockgen -source=http/client.go -package=mocks -destination=mocks/http_client_mock.go -mock_names=Client=HttpClientMock
+	mockgen -source=http/client.go -package=httpmock -destination=mocks/http/client_mock.go -mock_names=Client=ClientMock
+	mockgen -source=http/retryhttp/client.go -package=mocks -destination=mocks/http_retry_client_mock.go -mock_names=Client=HttpRetryClientMock
 	mockgen -source=captcha/provider.go -package=mocks -destination=mocks/captcha_provider_mock.go -mock_names=Provider=CaptchaProviderMock
 	mockgen -source=service/api/service.go -package=mocks -destination=mocks/api_service_mock.go -mock_names=Service=ApiServiceMock
 	mockgen -source=router/api/handler.go -package=mocks -destination=mocks/api_handler_mock.go -mock_names=Handler=ApiHandlerMock

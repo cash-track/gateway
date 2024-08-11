@@ -11,17 +11,18 @@ import (
 
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers"
-	"github.com/cash-track/gateway/http"
+	"github.com/cash-track/gateway/http/retryhttp"
 )
 
 const (
 	googleApiReCaptchaVerifyUrl = "https://www.google.com/recaptcha/api/siteverify"
 	googleApiReadTimeout        = 500 * time.Millisecond
 	googleApiWriteTimeout       = time.Second
+	googleApiRetryAttempts      = uint(2)
 )
 
 type GoogleReCaptchaProvider struct {
-	client http.Client
+	client retryhttp.Client
 	secret string
 }
 
@@ -34,9 +35,10 @@ type googleReCaptchaVerifyResponse struct {
 	ErrorCodes  []string `json:"error-codes,omitempty"`
 }
 
-func NewGoogleReCaptchaProvider(httpClient http.Client, options config.Config) *GoogleReCaptchaProvider {
+func NewGoogleReCaptchaProvider(httpClient retryhttp.Client, options config.Config) *GoogleReCaptchaProvider {
 	httpClient.WithReadTimeout(googleApiReadTimeout)
 	httpClient.WithWriteTimeout(googleApiWriteTimeout)
+	httpClient.WithRetryAttempts(googleApiRetryAttempts)
 
 	return &GoogleReCaptchaProvider{
 		client: httpClient,

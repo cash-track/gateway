@@ -16,7 +16,7 @@ import (
 
 func TestVerify(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewHttpClientMock(ctrl)
+	c := mocks.NewHttpRetryClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
@@ -24,6 +24,7 @@ func TestVerify(t *testing.T) {
 
 	c.EXPECT().WithReadTimeout(gomock.Eq(googleApiReadTimeout))
 	c.EXPECT().WithWriteTimeout(gomock.Eq(googleApiWriteTimeout))
+	c.EXPECT().WithRetryAttempts(gomock.Eq(googleApiRetryAttempts))
 	c.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
 		resp.SetBodyString(`{"success":true,"score":0.99,"error-codes":["no-error"]}`)
@@ -50,7 +51,7 @@ func TestVerify(t *testing.T) {
 
 func TestVerifyUnsuccessful(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewHttpClientMock(ctrl)
+	c := mocks.NewHttpRetryClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
@@ -58,6 +59,7 @@ func TestVerifyUnsuccessful(t *testing.T) {
 
 	c.EXPECT().WithReadTimeout(gomock.Eq(googleApiReadTimeout))
 	c.EXPECT().WithWriteTimeout(gomock.Eq(googleApiWriteTimeout))
+	c.EXPECT().WithRetryAttempts(gomock.Eq(googleApiRetryAttempts))
 	c.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
 		resp.SetBodyString(`{"success":false,"score":0.99,"error-codes":["bad-input"]}`)
@@ -84,7 +86,7 @@ func TestVerifyUnsuccessful(t *testing.T) {
 
 func TestVerifyEmptySecret(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewHttpClientMock(ctrl)
+	c := mocks.NewHttpRetryClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
@@ -92,6 +94,7 @@ func TestVerifyEmptySecret(t *testing.T) {
 
 	c.EXPECT().WithReadTimeout(gomock.Eq(googleApiReadTimeout))
 	c.EXPECT().WithWriteTimeout(gomock.Eq(googleApiWriteTimeout))
+	c.EXPECT().WithRetryAttempts(gomock.Eq(googleApiRetryAttempts))
 
 	p := NewGoogleReCaptchaProvider(c, config.Config{
 		CaptchaSecret: "",
@@ -104,7 +107,7 @@ func TestVerifyEmptySecret(t *testing.T) {
 
 func TestVerifyOptions(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewHttpClientMock(ctrl)
+	c := mocks.NewHttpRetryClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
@@ -113,6 +116,7 @@ func TestVerifyOptions(t *testing.T) {
 
 	c.EXPECT().WithReadTimeout(gomock.Eq(googleApiReadTimeout))
 	c.EXPECT().WithWriteTimeout(gomock.Eq(googleApiWriteTimeout))
+	c.EXPECT().WithRetryAttempts(gomock.Eq(googleApiRetryAttempts))
 
 	p := NewGoogleReCaptchaProvider(c, config.Config{
 		CaptchaSecret: "captcha_secret_1",
@@ -125,7 +129,7 @@ func TestVerifyOptions(t *testing.T) {
 
 func TestVerifyEmptyChallenge(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewHttpClientMock(ctrl)
+	c := mocks.NewHttpRetryClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
@@ -133,6 +137,7 @@ func TestVerifyEmptyChallenge(t *testing.T) {
 
 	c.EXPECT().WithReadTimeout(gomock.Eq(googleApiReadTimeout))
 	c.EXPECT().WithWriteTimeout(gomock.Eq(googleApiWriteTimeout))
+	c.EXPECT().WithRetryAttempts(gomock.Eq(googleApiRetryAttempts))
 
 	p := NewGoogleReCaptchaProvider(c, config.Config{
 		CaptchaSecret: "captcha_secret_1",
@@ -145,7 +150,7 @@ func TestVerifyEmptyChallenge(t *testing.T) {
 
 func TestVerifyRequestFail(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewHttpClientMock(ctrl)
+	c := mocks.NewHttpRetryClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
@@ -153,6 +158,7 @@ func TestVerifyRequestFail(t *testing.T) {
 
 	c.EXPECT().WithReadTimeout(gomock.Eq(googleApiReadTimeout))
 	c.EXPECT().WithWriteTimeout(gomock.Eq(googleApiWriteTimeout))
+	c.EXPECT().WithRetryAttempts(gomock.Eq(googleApiRetryAttempts))
 	c.EXPECT().Do(gomock.Any(), gomock.Any()).Return(fmt.Errorf("broken pipe"))
 
 	p := NewGoogleReCaptchaProvider(c, config.Config{
@@ -166,7 +172,7 @@ func TestVerifyRequestFail(t *testing.T) {
 
 func TestVerifyBadResponse(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	c := mocks.NewHttpClientMock(ctrl)
+	c := mocks.NewHttpRetryClientMock(ctrl)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
@@ -174,6 +180,7 @@ func TestVerifyBadResponse(t *testing.T) {
 
 	c.EXPECT().WithReadTimeout(gomock.Eq(googleApiReadTimeout))
 	c.EXPECT().WithWriteTimeout(gomock.Eq(googleApiWriteTimeout))
+	c.EXPECT().WithRetryAttempts(gomock.Eq(googleApiRetryAttempts))
 	c.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
 		resp.SetBodyString(`{"success":true`)

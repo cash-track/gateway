@@ -24,9 +24,10 @@ func TestRefreshTokenOk(t *testing.T) {
 	)
 
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
 		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"%s","refreshToken":"%s"}`, newAccessToken, newRefreshToken))
@@ -62,9 +63,10 @@ func TestRefreshTokenOk(t *testing.T) {
 
 func TestRefreshTokenFail(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusInternalServerError)
 		resp.SetBodyString(`{"error":"user deleted"}`)
@@ -88,9 +90,10 @@ func TestRefreshTokenFail(t *testing.T) {
 
 func TestRefreshTokenError(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).Return(fmt.Errorf("context cancelled"))
 
 	apiUrl, _ := url.Parse(endpoint)
@@ -109,9 +112,10 @@ func TestRefreshTokenError(t *testing.T) {
 
 func TestRefreshTokenErrorBadResponse(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
 		resp.SetBodyString("{")
@@ -135,9 +139,10 @@ func TestRefreshTokenErrorBadResponse(t *testing.T) {
 
 func TestRefreshTokenErrorLoggedOff(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusUnauthorized)
 		resp.SetBodyString(`{"message":"refresh token expired"}`)
