@@ -7,13 +7,14 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/cash-track/gateway/config"
-	"github.com/cash-track/gateway/http"
+	"github.com/cash-track/gateway/http/retryhttp"
 )
 
 const (
-	ServiceId        = "API"
-	httpReadTimeout  = 5 * time.Second
-	httpWriteTimeout = 5 * time.Second
+	ServiceId         = "API"
+	httpReadTimeout   = 5 * time.Second
+	httpWriteTimeout  = 5 * time.Second
+	httpRetryAttempts = uint(2)
 )
 
 var methodsWithBody = map[string]bool{
@@ -28,13 +29,14 @@ type Service interface {
 }
 
 type HttpService struct {
-	http   http.Client
+	http   retryhttp.Client
 	config config.Config
 }
 
-func NewHttp(http http.Client, config config.Config) *HttpService {
+func NewHttp(http retryhttp.Client, config config.Config) *HttpService {
 	http.WithReadTimeout(httpReadTimeout)
 	http.WithWriteTimeout(httpWriteTimeout)
+	http.WithRetryAttempts(httpRetryAttempts)
 
 	return &HttpService{
 		http:   http,

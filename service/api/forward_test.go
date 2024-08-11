@@ -18,9 +18,10 @@ import (
 
 func TestFullForwardRequestWithAuth(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
 
@@ -58,9 +59,10 @@ func TestFullForwardRequestWithAuth(t *testing.T) {
 
 func TestForwardRequestWithBodyOverride(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
 
@@ -87,9 +89,10 @@ func TestForwardRequestWithBodyOverride(t *testing.T) {
 
 func TestForwardRequestWithAuthRefresh(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusUnauthorized)
 
@@ -133,9 +136,10 @@ func TestForwardRequestWithAuthRefresh(t *testing.T) {
 
 func TestForwardRequestWithAuthRefreshFailLogout(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusUnauthorized)
 
@@ -167,9 +171,10 @@ func TestForwardRequestWithAuthRefreshFailLogout(t *testing.T) {
 
 func TestForwardRequestWithAuthRefreshSecondFail(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusUnauthorized)
 
@@ -210,9 +215,10 @@ func TestForwardRequestWithAuthRefreshSecondFail(t *testing.T) {
 
 func TestForwardRequestError(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).Return(fmt.Errorf("broken pipe"))
 
 	apiUrl, _ := url.Parse(endpoint)

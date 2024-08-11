@@ -18,9 +18,10 @@ const endpoint = "http://api.test.com"
 
 func TestHealthcheckOk(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
 
@@ -44,9 +45,10 @@ func TestHealthcheckOk(t *testing.T) {
 
 func TestHealthcheckFail(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusInternalServerError)
 		assert.NotNil(t, req)
@@ -64,9 +66,10 @@ func TestHealthcheckFail(t *testing.T) {
 
 func TestHealthcheckError(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewHttpClientMock(ctrl)
+	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).Return(fmt.Errorf("connection reset by peer"))
 
 	apiUrl, _ := url.Parse(endpoint)
