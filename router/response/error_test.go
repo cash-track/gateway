@@ -19,7 +19,7 @@ func TestNewErrorResponse(t *testing.T) {
 func TestWriteByError(t *testing.T) {
 	errorMsg := "broken pipe"
 
-	resp := ByError(fmt.Errorf(errorMsg))
+	resp := ByError(fmt.Errorf("%s", errorMsg))
 
 	ctx := fasthttp.RequestCtx{}
 
@@ -34,7 +34,7 @@ func TestWriteByErrorAndStatus(t *testing.T) {
 	errorMsg := "broken pipe"
 	statusCode := fasthttp.StatusUnprocessableEntity
 
-	resp := ByErrorAndStatus(fmt.Errorf(errorMsg), statusCode)
+	resp := ByErrorAndStatus(fmt.Errorf("%s", errorMsg), statusCode)
 
 	ctx := fasthttp.RequestCtx{}
 

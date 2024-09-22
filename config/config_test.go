@@ -8,6 +8,7 @@ import (
 )
 
 func TestConfigLoad(t *testing.T) {
+	_ = os.Setenv("GATEWAY_ADDRESS", ":80")
 	_ = os.Setenv("GATEWAY_COMPRESS", "true")
 	_ = os.Setenv("DEBUG_HTTP", "false")
 	_ = os.Setenv("API_URL", "http://api:80")
