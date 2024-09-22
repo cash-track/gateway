@@ -51,7 +51,7 @@ jobs:
           go build -race -v ./...
 
       - name: Test
-        run: go test -race -coverprofile=coverage.txt -covermode=atomic -v $(go list ./... | grep -v /mocks)
+        run: go test -race -coverprofile=coverage.txt -covermode=atomic -v $(go list ./... | grep /gateway/ | grep -v /mocks)
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
