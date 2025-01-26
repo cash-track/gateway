@@ -85,6 +85,8 @@ jobs:
 
   deploy:
     runs-on: [self-hosted, Linux, x64]
+    needs:
+      - build
     environment: prod
     permissions:
       contents: read
