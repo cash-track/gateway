@@ -20,6 +20,7 @@ import (
 type CaptchaProviderMock struct {
 	ctrl     *gomock.Controller
 	recorder *CaptchaProviderMockMockRecorder
+	isgomock struct{}
 }
 
 // CaptchaProviderMockMockRecorder is the mock recorder for CaptchaProviderMock.

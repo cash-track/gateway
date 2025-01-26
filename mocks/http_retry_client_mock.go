@@ -23,6 +23,7 @@ import (
 type HttpRetryClientMock struct {
 	ctrl     *gomock.Controller
 	recorder *HttpRetryClientMockMockRecorder
+	isgomock struct{}
 }
 
 // HttpRetryClientMockMockRecorder is the mock recorder for HttpRetryClientMock.

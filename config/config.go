@@ -28,6 +28,9 @@ type Config struct {
 	CorsAllowedOrigins map[string]bool
 
 	DebugHttp bool
+
+	CsrfEnabled     bool
+	RedisConnection string
 }
 
 var Global Config
@@ -57,6 +60,9 @@ func (c *Config) Load() {
 	c.CookieSecure = getCookieSecure(c.GatewayUrl)
 
 	c.CorsAllowedOrigins = getCorsAllowedOrigins(getEnv("CORS_ALLOWED_ORIGINS", ""))
+
+	c.CsrfEnabled = getEnv("CSRF_ENABLED", "") == "true"
+	c.RedisConnection = getEnv("REDIS_CONNECTION", "localhost:6379")
 }
 
 func getEnv(key, def string) string {
