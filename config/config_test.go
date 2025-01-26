@@ -15,6 +15,8 @@ func TestConfigLoad(t *testing.T) {
 	_ = os.Setenv("GATEWAY_URL", "https://gateway.dev.cash-track.app:8081")
 	_ = os.Setenv("HTTPS_ENABLED", "true")
 	_ = os.Setenv("CORS_ALLOWED_ORIGINS", "https://My.dev.cash-track.app:3001,https://Dev.cash-track.app:3000")
+	_ = os.Setenv("CSRF_ENABLED", "true")
+	_ = os.Setenv("REDIS_CONNECTION", "redis:1234")
 
 	config := &Config{}
 	config.Load()
@@ -42,6 +44,9 @@ func TestConfigLoad(t *testing.T) {
 
 	_, ok = config.CorsAllowedOrigins["https://dev.cash-track.app:3000"]
 	assert.Equal(t, true, ok)
+
+	assert.Equal(t, true, config.CsrfEnabled)
+	assert.Equal(t, "redis:1234", config.RedisConnection)
 }
 
 func TestConfigLoadUnexpectedApiUrl(t *testing.T) {

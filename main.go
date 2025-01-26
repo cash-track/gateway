@@ -4,6 +4,7 @@ import (
 	"log"
 
 	prom "github.com/flf2ko/fasthttp-prometheus"
+	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
 
 	"github.com/cash-track/gateway/captcha"
@@ -13,6 +14,7 @@ import (
 	"github.com/cash-track/gateway/logger"
 	"github.com/cash-track/gateway/router"
 	apiHandler "github.com/cash-track/gateway/router/api"
+	csrfHandler "github.com/cash-track/gateway/router/csrf"
 	apiService "github.com/cash-track/gateway/service/api"
 )
 
@@ -24,15 +26,22 @@ const (
 func main() {
 	config.Global.Load()
 
+	redisClient := getRedisClient()
+	csrf := csrfHandler.NewRedisHandler(redisClient)
+
 	r := router.New(
 		apiHandler.NewHttp(
 			config.Global,
 			apiService.NewHttp(retryhttp.NewFastHttpRetryClient(), config.Global),
 			captcha.NewGoogleReCaptchaProvider(retryhttp.NewFastHttpRetryClient(), config.Global),
 		),
+		csrf,
 	)
 	h := prom.NewPrometheus("http").WrapHandler(r.Router)
 	h = headers.Handler(h)
+	if config.Global.CsrfEnabled {
+		h = csrf.Handler(h)
+	}
 	h = headers.CorsHandler(h)
 	h = logger.DebugHandler(h)
 
@@ -67,4 +76,10 @@ func startTls(s *fasthttp.Server) {
 	if err := s.ListenAndServeTLS(config.Global.Address, config.Global.HttpsCrt, config.Global.HttpsKey); err != nil {
 		log.Fatalf("Error in HTTPS server: %v", err)
 	}
+}
+
+func getRedisClient() *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr: config.Global.RedisConnection,
+	})
 }
