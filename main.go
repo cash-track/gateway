@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"log"
+	"time"
 
 	prom "github.com/flf2ko/fasthttp-prometheus"
 	"github.com/redis/go-redis/v9"
@@ -79,7 +81,18 @@ func startTls(s *fasthttp.Server) {
 }
 
 func getRedisClient() *redis.Client {
-	return redis.NewClient(&redis.Options{
+	client := redis.NewClient(&redis.Options{
 		Addr: config.Global.RedisConnection,
 	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Error connecting to redis: %v", err)
+	}
+
+	log.Printf("Connected to Redis at %s\n", config.Global.RedisConnection)
+
+	return client
 }
