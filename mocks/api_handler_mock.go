@@ -20,6 +20,7 @@ import (
 type ApiHandlerMock struct {
 	ctrl     *gomock.Controller
 	recorder *ApiHandlerMockMockRecorder
+	isgomock struct{}
 }
 
 // ApiHandlerMockMockRecorder is the mock recorder for ApiHandlerMock.

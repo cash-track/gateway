@@ -50,4 +50,5 @@ mock-gen:
 	mockgen -source=captcha/provider.go -package=mocks -destination=mocks/captcha_provider_mock.go -mock_names=Provider=CaptchaProviderMock
 	mockgen -source=service/api/service.go -package=mocks -destination=mocks/api_service_mock.go -mock_names=Service=ApiServiceMock
 	mockgen -source=router/api/handler.go -package=mocks -destination=mocks/api_handler_mock.go -mock_names=Handler=ApiHandlerMock
+	mockgen -source=router/csrf/handler.go -package=mocks -destination=mocks/csrf_handler_mock.go -mock_names=Handler=CsrfHandlerMock
 

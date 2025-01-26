@@ -20,6 +20,7 @@ import (
 type ApiServiceMock struct {
 	ctrl     *gomock.Controller
 	recorder *ApiServiceMockMockRecorder
+	isgomock struct{}
 }
 
 // ApiServiceMockMockRecorder is the mock recorder for ApiServiceMock.

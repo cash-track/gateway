@@ -13,8 +13,9 @@ import (
 
 func TestLiveHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewApiHandlerMock(ctrl)
-	r := New(h)
+	a := mocks.NewApiHandlerMock(ctrl)
+	c := mocks.NewCsrfHandlerMock(ctrl)
+	r := New(a, c)
 
 	ctx := fasthttp.RequestCtx{}
 
@@ -26,9 +27,10 @@ func TestLiveHandler(t *testing.T) {
 
 func TestReadyHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewApiHandlerMock(ctrl)
-	h.EXPECT().Healthcheck().Return(nil)
-	r := New(h)
+	a := mocks.NewApiHandlerMock(ctrl)
+	a.EXPECT().Healthcheck().Return(nil)
+	c := mocks.NewCsrfHandlerMock(ctrl)
+	r := New(a, c)
 
 	ctx := fasthttp.RequestCtx{}
 
@@ -40,9 +42,10 @@ func TestReadyHandler(t *testing.T) {
 
 func TestReadyHandlerFail(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	h := mocks.NewApiHandlerMock(ctrl)
-	h.EXPECT().Healthcheck().Return(fmt.Errorf("context cancelled"))
-	r := New(h)
+	a := mocks.NewApiHandlerMock(ctrl)
+	a.EXPECT().Healthcheck().Return(fmt.Errorf("context cancelled"))
+	c := mocks.NewCsrfHandlerMock(ctrl)
+	r := New(a, c)
 
 	ctx := fasthttp.RequestCtx{}
 
