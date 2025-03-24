@@ -1,2 +1,5 @@
+version: '2'
 output:
-  format: github-actions
+  formats:
+    text:
+      colors: false

@@ -17,6 +17,8 @@ jobs:
   coding-standards:
     name: Coding Standards
     runs-on: [self-hosted, Linux, x64]
+    permissions:
+      contents: read
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -27,10 +29,9 @@ jobs:
           go-version: '1.23'
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: v1.60
-          args: --timeout=10m
+          version: v2.0
 
   tests:
     name: Tests
