@@ -1,2 +1,4 @@
 output:
-  format: github-actions
+  formats:
+    text:
+      colors: false
