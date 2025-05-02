@@ -5,6 +5,8 @@ import (
 
 	"github.com/valyala/fasthttp"
 	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/cash-track/gateway/traces/semconv"
 )
 
 const (
@@ -59,9 +61,9 @@ func (a Auth) GetRefreshTokenExpireDate() time.Time {
 
 func (a Auth) GetOpenTelemetryAttributes() []attribute.KeyValue {
 	return []attribute.KeyValue{
-		attribute.Bool("ct.auth.is_logged", a.IsLogged()),
-		attribute.Bool("ct.auth.can_refresh", a.CanRefresh()),
-		attribute.String("ct.auth.access_token_expire_at", a.AccessTokenExpiredAt),
-		attribute.String("ct.auth.refresh_token_expire_at", a.RefreshTokenExpiredAt),
+		attribute.Bool(semconv.CashTrackAuthIsLoggedKey, a.IsLogged()),
+		attribute.Bool(semconv.CashTrackAuthCanRefreshKey, a.CanRefresh()),
+		attribute.String(semconv.CashTrackAuthAccessTokenExpireAtKey, a.AccessTokenExpiredAt),
+		attribute.String(semconv.CashTrackAuthRefreshTokenExpireAtKey, a.RefreshTokenExpiredAt),
 	}
 }

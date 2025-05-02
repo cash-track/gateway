@@ -19,6 +19,7 @@ import (
 	"github.com/cash-track/gateway/headers/cookie"
 	"github.com/cash-track/gateway/router/response"
 	"github.com/cash-track/gateway/traces"
+	"github.com/cash-track/gateway/traces/semconv"
 )
 
 const (
@@ -60,12 +61,12 @@ func newUserContext(cookie cookie.CSRF) userContext {
 
 func (c userContext) GetOpenTelemetryAttributes() []attribute.KeyValue {
 	v := []attribute.KeyValue{
-		attribute.String("ct.csrf.context", c.context),
-		attribute.Bool("ct.csrf.is_valid", c.isValid),
+		attribute.String(semconv.CashTrackCSRFContextKey, c.context),
+		attribute.Bool(semconv.CashTrackCSRFIsValidKey, c.isValid),
 	}
 
 	if c.err != nil {
-		v = append(v, attribute.String("ct.csrf.error", c.err.Error()))
+		v = append(v, attribute.String(semconv.CashTrackCSRFErrorKey, c.err.Error()))
 	}
 
 	return v
