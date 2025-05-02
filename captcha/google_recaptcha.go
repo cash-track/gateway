@@ -16,6 +16,7 @@ import (
 	"github.com/cash-track/gateway/headers"
 	"github.com/cash-track/gateway/http/retryhttp"
 	"github.com/cash-track/gateway/traces"
+	"github.com/cash-track/gateway/traces/semconv"
 )
 
 const (
@@ -41,12 +42,12 @@ type googleReCaptchaVerifyResponse struct {
 
 func (r *googleReCaptchaVerifyResponse) GetOpenTelemetryAttributes() []attribute.KeyValue {
 	return []attribute.KeyValue{
-		attribute.Bool("ct.captcha.success", r.Success),
-		attribute.String("ct.captcha.challenge_ts", r.ChallengeTS),
-		attribute.String("ct.captcha.hostname", r.Hostname),
-		attribute.Float64("ct.captcha.score", float64(r.Score)),
-		attribute.String("ct.captcha.action", r.Action),
-		attribute.String("ct.captcha.error_codes", strings.Join(r.ErrorCodes, ",")),
+		attribute.Bool(semconv.CashTrackCaptchaSuccessKey, r.Success),
+		attribute.String(semconv.CashTrackCaptchaChallengeTSKey, r.ChallengeTS),
+		attribute.String(semconv.CashTrackCaptchaHostnameKey, r.Hostname),
+		attribute.Float64(semconv.CashTrackCaptchaScoreKey, float64(r.Score)),
+		attribute.String(semconv.CashTrackCaptchaActionKey, r.Action),
+		attribute.String(semconv.CashTrackCaptchaErrorCodesKey, strings.Join(r.ErrorCodes, ",")),
 	}
 }
 
