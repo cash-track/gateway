@@ -83,13 +83,14 @@ func NewRedisHandler(client *redis.Client) *RedisHandler {
 }
 
 // Handler will check each request of defined HTTP methods for CSRF token
-// and rotate the new CSRF token as the response
+// and rotate the new CSRF token as the response.
 func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
 		method := string(ctx.Request.Header.Method())
 
 		if method == fasthttp.MethodOptions {
 			h(ctx)
+
 			return
 		}
 
@@ -109,6 +110,7 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 			span.End()
 			log.Printf("Error on validating CSRF token: %v", err)
 			response.ByErrorAndStatus(err, fasthttp.StatusExpectationFailed).Write(ctx)
+
 			return
 		}
 
@@ -131,6 +133,7 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 				rotateSpan.SetStatus(codes.Error, "rotate error")
 				log.Printf("Error on rotating CSRF token: %v", err)
 				ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+
 				return
 			}
 
@@ -138,6 +141,42 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 			userCtx.cookie.WriteCookie(ctx)
 		}
 	}
+}
+
+// RotateTokenHandler configure CSRF cookie for next request validation.
+func (r *RedisHandler) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
+	spanCtx, span := traces.GetTracer().Start(
+		traces.FindParentContext(ctx),
+		fmt.Sprintf("csrf rotate handler %s %s", ctx.Request.Header.Method(), ctx.URI().PathOriginal()),
+		trace.WithAttributes(traces.RequestAttributes(&ctx.Request)...),
+	)
+	defer span.End()
+
+	userCtx := newUserContext(cookie.ReadCSRFCookie(ctx))
+	span.SetAttributes(traces.AttributesGetter(userCtx)...)
+
+	if !userCtx.cookie.Auth.IsLogged() {
+		span.SetStatus(codes.Error, "unauthorized")
+		userCtx.cookie.WriteCookie(ctx)
+		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
+
+		return
+	}
+
+	newToken, err := r.rotate(spanCtx, userCtx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "unknown")
+		log.Printf("Error on rotating CSRF token: %v", err)
+		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+
+		return
+	}
+
+	userCtx.cookie.Token = newToken
+	userCtx.cookie.WriteCookie(ctx)
+	ctx.SetStatusCode(fasthttp.StatusOK)
+	span.SetStatus(codes.Ok, "")
 }
 
 func (r *RedisHandler) validateCsrfRequest(ctx context.Context, userCtx userContext, method string) error {
@@ -154,40 +193,6 @@ func (r *RedisHandler) validateCsrfRequest(ctx context.Context, userCtx userCont
 	}
 
 	return r.verify(ctx, userCtx)
-}
-
-// RotateTokenHandler configure CSRF cookie for next request validation
-func (r *RedisHandler) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
-	spanCtx, span := traces.GetTracer().Start(
-		traces.FindParentContext(ctx),
-		fmt.Sprintf("csrf rotate handler %s %s", ctx.Request.Header.Method(), ctx.URI().PathOriginal()),
-		trace.WithAttributes(traces.RequestAttributes(&ctx.Request)...),
-	)
-	defer span.End()
-
-	userCtx := newUserContext(cookie.ReadCSRFCookie(ctx))
-	span.SetAttributes(traces.AttributesGetter(userCtx)...)
-
-	if !userCtx.cookie.Auth.IsLogged() {
-		span.SetStatus(codes.Error, "unauthorized")
-		userCtx.cookie.WriteCookie(ctx)
-		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
-		return
-	}
-
-	newToken, err := r.rotate(spanCtx, userCtx)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "unknown")
-		log.Printf("Error on rotating CSRF token: %v", err)
-		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
-		return
-	}
-
-	userCtx.cookie.Token = newToken
-	userCtx.cookie.WriteCookie(ctx)
-	ctx.SetStatusCode(fasthttp.StatusOK)
-	span.SetStatus(codes.Ok, "")
 }
 
 func (r *RedisHandler) rotate(ctx context.Context, userCtx userContext) (string, error) {
@@ -209,6 +214,7 @@ func (r *RedisHandler) verify(ctx context.Context, userCtx userContext) error {
 		return fmt.Errorf("error on reading token: %w", cmd.Err())
 	} else if strings.Compare(userCtx.cookie.Token, cmd.Val()) != 0 {
 		log.Printf("CSRF token is invalid: requested %s stored %s", userCtx.cookie.Token, cmd.Val())
+
 		return fmt.Errorf("invalid CSRF token")
 	}
 
@@ -217,6 +223,7 @@ func (r *RedisHandler) verify(ctx context.Context, userCtx userContext) error {
 
 func generateNewToken() string {
 	token, _ := uuid.NewV7()
+
 	return token.String()
 }
 

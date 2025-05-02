@@ -17,7 +17,11 @@ import (
 
 var refreshURI = []byte("/auth/refresh")
 
-func (s *HttpService) refreshToken(auth cookie.Auth, spanCtx context.Context, ctx *fasthttp.RequestCtx) (cookie.Auth, error) {
+func (s *HttpService) refreshToken(
+	auth cookie.Auth,
+	spanCtx context.Context,
+	ctx *fasthttp.RequestCtx,
+) (cookie.Auth, error) {
 	req := fasthttp.AcquireRequest()
 	defer func() {
 		fasthttp.ReleaseRequest(req)
@@ -57,6 +61,7 @@ func (s *HttpService) refreshToken(auth cookie.Auth, spanCtx context.Context, ct
 	err := s.http.Do(req, resp)
 	if err != nil {
 		span.RecordError(err)
+
 		return newAuth, fmt.Errorf("refresh token API request error: %w", err)
 	}
 
@@ -66,6 +71,7 @@ func (s *HttpService) refreshToken(auth cookie.Auth, spanCtx context.Context, ct
 	if resp.StatusCode() == fasthttp.StatusUnauthorized {
 		// re-login required
 		span.SetStatus(codes.Error, "unauthorized")
+
 		return newAuth, nil
 	}
 
@@ -74,11 +80,13 @@ func (s *HttpService) refreshToken(auth cookie.Auth, spanCtx context.Context, ct
 		err = fmt.Errorf("refresh token failed [status %d]: %v", resp.StatusCode(), resp.Body())
 		span.SetStatus(codes.Error, "unknown")
 		span.RecordError(err)
+
 		return newAuth, err
 	}
 
 	if err := json.Unmarshal(resp.Body(), &newAuth); err != nil {
 		span.RecordError(err)
+
 		return newAuth, fmt.Errorf("refresh token unexpected response body: %w", err)
 	}
 

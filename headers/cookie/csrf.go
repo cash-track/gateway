@@ -31,6 +31,7 @@ func ReadCSRFCookie(ctx *fasthttp.RequestCtx) CSRF {
 func (c CSRF) WriteCookie(ctx *fasthttp.RequestCtx) {
 	if !c.Auth.IsLogged() {
 		ctx.Response.Header.SetCookie(newCookie(CsrfTokenCookieName, "", fasthttp.CookieExpireDelete))
+
 		return
 	}
 

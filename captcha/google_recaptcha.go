@@ -80,11 +80,13 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 	if p.secret == "" {
 		span.SetStatus(codes.Ok, "disabled")
 		log.Printf("[%s] captcha secret empty, skipping verify", clientIp)
+
 		return true, nil
 	}
 
 	if string(ctx.Request.Header.Method()) == fasthttp.MethodOptions {
 		span.SetStatus(codes.Ok, "unsupported method")
+
 		return true, nil
 	}
 
@@ -92,6 +94,7 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 	if challenge == nil || string(challenge) == "" {
 		span.SetStatus(codes.Error, "empty challenge")
 		log.Printf("[%s] captcha challenge empty", clientIp)
+
 		return false, nil
 	}
 
@@ -109,6 +112,7 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 	if err := p.client.Do(req, resp); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "request error")
+
 		return false, fmt.Errorf("captcha verify request error: %w", err)
 	}
 
@@ -118,14 +122,21 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 	if err := json.Unmarshal(resp.Body(), &verifyResp); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "read body error")
+
 		return false, fmt.Errorf("captcha verify response unexpected: %w", err)
 	}
 
 	span.SetAttributes(traces.AttributesGetter(&verifyResp)...)
 
 	if !verifyResp.Success {
-		log.Printf("[%s] captcha verify unsuccessfull: score %f, errors: %s", clientIp, verifyResp.Score, strings.Join(verifyResp.ErrorCodes, ", "))
+		log.Printf(
+			"[%s] captcha verify unsuccessful: score %f, errors: %s",
+			clientIp,
+			verifyResp.Score,
+			strings.Join(verifyResp.ErrorCodes, ", "),
+		)
 		span.SetStatus(codes.Error, "validation failed")
+
 		return false, nil
 	}
 

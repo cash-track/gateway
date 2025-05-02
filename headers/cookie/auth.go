@@ -39,6 +39,7 @@ func (a Auth) WriteCookie(ctx *fasthttp.RequestCtx) {
 	if !a.IsLogged() {
 		ctx.Response.Header.SetCookie(newCookie(AccessTokenCookieName, "", fasthttp.CookieExpireDelete))
 		ctx.Response.Header.SetCookie(newCookie(RefreshTokenCookieName, "", fasthttp.CookieExpireDelete))
+
 		return
 	}
 
@@ -56,6 +57,7 @@ func (a Auth) CanRefresh() bool {
 
 func (a Auth) GetRefreshTokenExpireDate() time.Time {
 	t, _ := time.Parse(time.RFC3339, a.RefreshTokenExpiredAt)
+
 	return t
 }
 

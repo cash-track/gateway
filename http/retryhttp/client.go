@@ -46,5 +46,6 @@ func (c *FastHttpRetryClient) DoWithRetry(req *fasthttp.Request, resp *fasthttp.
 
 func (c *FastHttpRetryClient) WithRetryAttempts(attempts uint) Client {
 	c.attempts = attempts
+
 	return c
 }

@@ -30,7 +30,7 @@ var (
 	}
 )
 
-// CorsHandler is a middleware to write default CORS headers if no forwarded
+// CorsHandler is a middleware to write default CORS headers if no forwarded.
 func CorsHandler(h fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
 		h(ctx)

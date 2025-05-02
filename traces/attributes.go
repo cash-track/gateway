@@ -9,6 +9,10 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.30.0"
 )
 
+const (
+	headerPartsCount = 2
+)
+
 type OpenTelemetryAttributesGetter interface {
 	GetOpenTelemetryAttributes() []attribute.KeyValue
 }
@@ -22,6 +26,7 @@ func AttributesGetter(getters ...OpenTelemetryAttributesGetter) []attribute.KeyV
 	for _, getter := range getters {
 		result = append(result, getter.GetOpenTelemetryAttributes()...)
 	}
+
 	return result
 }
 
@@ -30,6 +35,7 @@ func MergeAttributes(attributes ...[]attribute.KeyValue) []attribute.KeyValue {
 	for _, attr := range attributes {
 		result = append(result, attr...)
 	}
+
 	return result
 }
 
@@ -80,13 +86,15 @@ func SanitizeHTTPHeaders(raw string) string {
 		// Skip empty lines
 		if len(strings.TrimSpace(line)) == 0 {
 			result = append(result, line)
+
 			continue
 		}
 
 		// Split header line into name and value
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
+		parts := strings.SplitN(line, ":", headerPartsCount)
+		if len(parts) != headerPartsCount {
 			result = append(result, line)
+
 			continue
 		}
 

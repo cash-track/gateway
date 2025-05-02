@@ -1,6 +1,15 @@
 version: '2'
 linters:
   default: fast
+  disable:
+    - depguard
+    - cyclop
+    - funlen
+    - wsl
+  exclusions:
+    paths:
+      - mocks
+      - _test\.go
 output:
   formats:
     text:

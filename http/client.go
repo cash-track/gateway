@@ -6,6 +6,12 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const (
+	ReadTimeout  = 5 * time.Second
+	WriteTimeout = 5 * time.Second
+	Concurrency  = 4096
+)
+
 type Client interface {
 	Do(req *fasthttp.Request, resp *fasthttp.Response) error
 	WithReadTimeout(timeout time.Duration) Client
@@ -19,14 +25,14 @@ type FastHttpClient struct {
 func NewFastHttpClient() Client {
 	return &FastHttpClient{
 		Client: &fasthttp.Client{
-			ReadTimeout:                   5 * time.Second,
-			WriteTimeout:                  5 * time.Second,
+			ReadTimeout:                   ReadTimeout,
+			WriteTimeout:                  WriteTimeout,
 			MaxIdleConnDuration:           time.Hour,
 			NoDefaultUserAgentHeader:      true,
 			DisableHeaderNamesNormalizing: true,
 			DisablePathNormalizing:        true,
 			Dial: (&fasthttp.TCPDialer{
-				Concurrency:      4096,
+				Concurrency:      Concurrency,
 				DNSCacheDuration: time.Hour,
 			}).Dial,
 		},
@@ -35,10 +41,12 @@ func NewFastHttpClient() Client {
 
 func (c *FastHttpClient) WithReadTimeout(timeout time.Duration) Client {
 	c.ReadTimeout = timeout
+
 	return c
 }
 
 func (c *FastHttpClient) WithWriteTimeout(timeout time.Duration) Client {
 	c.WriteTimeout = timeout
+
 	return c
 }

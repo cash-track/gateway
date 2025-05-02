@@ -39,7 +39,7 @@ var (
 	ContentTypeForm = []byte("application/x-www-form-urlencoded")
 
 	// A list of headers which will always be overwritten if an attempt to write new value
-	// occurs when other value already exists
+	// occurs when other value already exists.
 	singleInstanceHeaders = map[string]bool{
 		strings.ToLower(Authorization):       true,
 		strings.ToLower(ContentType):         true,
@@ -87,5 +87,6 @@ func copyAll(src [][]byte) [][]byte {
 	for _, v := range src {
 		value = append(value, bytes.Clone(v))
 	}
+
 	return value
 }

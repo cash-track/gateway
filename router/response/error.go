@@ -15,13 +15,6 @@ type ErrorResponse struct {
 	StatusCode int    `json:"-"`
 }
 
-func (e ErrorResponse) Write(ctx *fasthttp.RequestCtx) {
-	body, _ := json.Marshal(e)
-	ctx.Response.SetBody(body)
-	ctx.Response.SetStatusCode(e.StatusCode)
-	ctx.Response.Header.Set("Content-Type", "application/json")
-}
-
 func NewErrorResponse(message string, err error, status int) ErrorResponse {
 	if err == nil {
 		err = errors.New("")
@@ -32,6 +25,13 @@ func NewErrorResponse(message string, err error, status int) ErrorResponse {
 		Error:      err.Error(),
 		StatusCode: status,
 	}
+}
+
+func (e ErrorResponse) Write(ctx *fasthttp.RequestCtx) {
+	body, _ := json.Marshal(e)
+	ctx.Response.SetBody(body)
+	ctx.Response.SetStatusCode(e.StatusCode)
+	ctx.Response.Header.Set("Content-Type", "application/json")
 }
 
 func ByError(err error) ErrorResponse {
