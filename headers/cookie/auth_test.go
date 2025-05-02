@@ -113,3 +113,60 @@ func TestWriteAuthCookie(t *testing.T) {
 		})
 	}
 }
+
+func TestAuth_GetOpenTelemetryAttributes(t *testing.T) {
+	tomorrow := time.Now().Add(time.Hour * 24).Format(time.RFC3339)
+
+	for name, test := range map[string]struct {
+		auth     Auth
+		expected map[string]interface{}
+	}{
+		"LoggedWithRefresh": {
+			auth: Auth{
+				AccessToken:           "access-123",
+				AccessTokenExpiredAt:  tomorrow,
+				RefreshToken:          "refresh-123",
+				RefreshTokenExpiredAt: tomorrow,
+			},
+			expected: map[string]interface{}{
+				"ct.auth.is_logged":               true,
+				"ct.auth.can_refresh":             true,
+				"ct.auth.access_token_expire_at":  tomorrow,
+				"ct.auth.refresh_token_expire_at": tomorrow,
+			},
+		},
+		"OnlyLogged": {
+			auth: Auth{
+				AccessToken:          "access-123",
+				AccessTokenExpiredAt: tomorrow,
+			},
+			expected: map[string]interface{}{
+				"ct.auth.is_logged":               true,
+				"ct.auth.can_refresh":             false,
+				"ct.auth.access_token_expire_at":  tomorrow,
+				"ct.auth.refresh_token_expire_at": "",
+			},
+		},
+		"Guest": {
+			auth: Auth{},
+			expected: map[string]interface{}{
+				"ct.auth.is_logged":               false,
+				"ct.auth.can_refresh":             false,
+				"ct.auth.access_token_expire_at":  "",
+				"ct.auth.refresh_token_expire_at": "",
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			attrs := test.auth.GetOpenTelemetryAttributes()
+
+			assert.Len(t, attrs, len(test.expected))
+
+			for _, attr := range attrs {
+				expectedValue, exists := test.expected[string(attr.Key)]
+				assert.True(t, exists, "unexpected attribute key: %s", attr.Key)
+				assert.Equal(t, expectedValue, attr.Value.AsInterface())
+			}
+		})
+	}
+}

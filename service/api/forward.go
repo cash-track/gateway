@@ -6,10 +6,13 @@ import (
 	"log"
 
 	"github.com/valyala/fasthttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/cash-track/gateway/headers"
 	"github.com/cash-track/gateway/headers/cookie"
 	"github.com/cash-track/gateway/logger"
+	"github.com/cash-track/gateway/traces"
 )
 
 func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) error {
@@ -57,6 +60,21 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 
 	logger.DebugRequest(req, ServiceId)
 
+	spanCtx, span := traces.GetTracer().Start(
+		traces.FindParentContext(ctx),
+		fmt.Sprintf("forward %s %s %s", ServiceId, ctx.Request.Header.Method(), ctx.URI().PathOriginal()),
+		trace.WithAttributes(
+			traces.MergeAttributes(
+				traces.Attributes(attribute.String("http.request.real_ip", remoteIp)),
+				traces.AttributesGetter(auth),
+				traces.RequestAttributes(req),
+			)...,
+		),
+	)
+	defer span.End()
+
+	traces.PropagateContextToRequest(ctx, req)
+
 	// execute request
 	resp := fasthttp.AcquireResponse()
 	defer func() {
@@ -64,31 +82,52 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 	}()
 
 	if err := s.http.Do(req, resp); err != nil {
+		span.RecordError(err)
 		return fmt.Errorf("API request error: %w", err)
 	}
 
 	logger.DebugResponse(resp, ServiceId)
 	logger.FullForwarded(ctx, req, resp, ServiceId)
 
+	span.SetAttributes(traces.ResponseAttributes(resp)...)
+
 	if !auth.IsLogged() || !auth.CanRefresh() || resp.StatusCode() != fasthttp.StatusUnauthorized {
 		return forwardResponse(ctx, resp)
 	}
 
 	// perform refresh token
-	newAuth, err := s.refreshToken(auth)
+	newAuth, err := s.refreshToken(auth, spanCtx, ctx)
 	if err != nil {
+		span.RecordError(err)
 		log.Printf("[%s] refresh token attempt: %s", remoteIp, err.Error())
 	}
 
 	if newAuth.IsLogged() {
 		headers.WriteBearerToken(req, newAuth.AccessToken)
 
+		span.End()
+
+		_, retrySpan := traces.GetTracer().Start(
+			spanCtx,
+			fmt.Sprintf("forward (refreshed) %s %s %s", ServiceId, ctx.Request.Header.Method(), ctx.URI().PathOriginal()),
+			trace.WithAttributes(
+				traces.MergeAttributes(
+					traces.Attributes(attribute.String("http.request.real_ip", remoteIp)),
+					traces.AttributesGetter(auth),
+					traces.RequestAttributes(req),
+				)...,
+			),
+		)
+		defer retrySpan.End()
+
 		// execute request 2nd attempt
 		if err := s.http.Do(req, resp); err != nil {
+			retrySpan.RecordError(err)
 			return fmt.Errorf("API request with fresh token error: %w", err)
 		}
 
 		logger.DebugResponse(resp, ServiceId)
+		retrySpan.SetAttributes(traces.ResponseAttributes(resp)...)
 	}
 
 	newAuth.WriteCookie(ctx)

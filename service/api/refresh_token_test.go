@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"testing"
@@ -53,7 +54,7 @@ func TestRefreshTokenOk(t *testing.T) {
 		AccessToken:  oldAccessToken,
 	}
 
-	newAuth, err := s.refreshToken(auth)
+	newAuth, err := s.refreshToken(auth, context.TODO(), &fasthttp.RequestCtx{})
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, newAuth)
@@ -81,7 +82,7 @@ func TestRefreshTokenFail(t *testing.T) {
 
 	auth := cookie.Auth{}
 
-	newAuth, err := s.refreshToken(auth)
+	newAuth, err := s.refreshToken(auth, context.TODO(), &fasthttp.RequestCtx{})
 
 	assert.Error(t, err)
 	assert.Empty(t, newAuth.AccessToken)
@@ -103,7 +104,7 @@ func TestRefreshTokenError(t *testing.T) {
 
 	auth := cookie.Auth{}
 
-	newAuth, err := s.refreshToken(auth)
+	newAuth, err := s.refreshToken(auth, context.TODO(), &fasthttp.RequestCtx{})
 
 	assert.Error(t, err)
 	assert.Empty(t, newAuth.AccessToken)
@@ -130,7 +131,7 @@ func TestRefreshTokenErrorBadResponse(t *testing.T) {
 
 	auth := cookie.Auth{}
 
-	newAuth, err := s.refreshToken(auth)
+	newAuth, err := s.refreshToken(auth, context.TODO(), &fasthttp.RequestCtx{})
 
 	assert.Error(t, err)
 	assert.Empty(t, newAuth.AccessToken)
@@ -157,7 +158,7 @@ func TestRefreshTokenErrorLoggedOff(t *testing.T) {
 
 	auth := cookie.Auth{}
 
-	newAuth, err := s.refreshToken(auth)
+	newAuth, err := s.refreshToken(auth, context.TODO(), &fasthttp.RequestCtx{})
 
 	assert.NoError(t, err)
 	assert.Empty(t, newAuth.AccessToken)

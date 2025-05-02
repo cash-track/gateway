@@ -12,9 +12,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/cash-track/gateway/headers/cookie"
 	"github.com/cash-track/gateway/router/response"
+	"github.com/cash-track/gateway/traces"
 )
 
 const (
@@ -54,6 +58,19 @@ func newUserContext(cookie cookie.CSRF) userContext {
 	return userCtx
 }
 
+func (c userContext) GetOpenTelemetryAttributes() []attribute.KeyValue {
+	v := []attribute.KeyValue{
+		attribute.String("ct.csrf.context", c.context),
+		attribute.Bool("ct.csrf.is_valid", c.isValid),
+	}
+
+	if c.err != nil {
+		v = append(v, attribute.String("ct.csrf.error", c.err.Error()))
+	}
+
+	return v
+}
+
 type RedisHandler struct {
 	client *redis.Client
 }
@@ -75,19 +92,42 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 			return
 		}
 
+		_, span := traces.GetTracer().Start(
+			traces.FindParentContext(ctx),
+			fmt.Sprintf("csrf validate %s %s", ctx.Request.Header.Method(), ctx.URI().PathOriginal()),
+			trace.WithAttributes(traces.RequestAttributes(&ctx.Request)...),
+		)
+		defer span.End()
+
 		userCtx := newUserContext(cookie.ReadCSRFCookie(ctx))
+		span.SetAttributes(traces.AttributesGetter(userCtx)...)
 
 		if err := r.validateCsrfRequest(userCtx, method); err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "invalid")
+			span.End()
 			log.Printf("Error on validating CSRF token: %v", err)
 			response.ByErrorAndStatus(err, fasthttp.StatusExpectationFailed).Write(ctx)
 			return
 		}
 
+		span.End()
+
 		h(ctx)
 
 		if userCtx.cookie.Auth.IsLogged() {
+			_, rotateSpan := traces.GetTracer().Start(
+				traces.FindParentContext(ctx),
+				fmt.Sprintf("csrf rotate %s %s", ctx.Request.Header.Method(), ctx.URI().PathOriginal()),
+				trace.WithAttributes(traces.RequestAttributes(&ctx.Request)...),
+				trace.WithAttributes(traces.ResponseAttributes(&ctx.Response)...),
+			)
+			defer rotateSpan.End()
+
 			newToken, err := r.rotate(userCtx)
 			if err != nil {
+				rotateSpan.RecordError(err)
+				rotateSpan.SetStatus(codes.Error, "rotate error")
 				log.Printf("Error on rotating CSRF token: %v", err)
 				ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 				return
@@ -117,9 +157,18 @@ func (r *RedisHandler) validateCsrfRequest(ctx userContext, method string) error
 
 // RotateTokenHandler configure CSRF cookie for next request validation
 func (r *RedisHandler) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
+	_, span := traces.GetTracer().Start(
+		traces.FindParentContext(ctx),
+		fmt.Sprintf("csrf rotate handler %s %s", ctx.Request.Header.Method(), ctx.URI().PathOriginal()),
+		trace.WithAttributes(traces.RequestAttributes(&ctx.Request)...),
+	)
+	defer span.End()
+
 	userCtx := newUserContext(cookie.ReadCSRFCookie(ctx))
+	span.SetAttributes(traces.AttributesGetter(userCtx)...)
 
 	if !userCtx.cookie.Auth.IsLogged() {
+		span.SetStatus(codes.Error, "unauthorized")
 		userCtx.cookie.WriteCookie(ctx)
 		ctx.SetStatusCode(fasthttp.StatusUnauthorized)
 		return
@@ -127,6 +176,8 @@ func (r *RedisHandler) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
 
 	newToken, err := r.rotate(userCtx)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "unknown")
 		log.Printf("Error on rotating CSRF token: %v", err)
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 		return
@@ -135,6 +186,7 @@ func (r *RedisHandler) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
 	userCtx.cookie.Token = newToken
 	userCtx.cookie.WriteCookie(ctx)
 	ctx.SetStatusCode(fasthttp.StatusOK)
+	span.SetStatus(codes.Ok, "")
 }
 
 func (r *RedisHandler) rotate(ctx userContext) (string, error) {
