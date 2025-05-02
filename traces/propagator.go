@@ -15,7 +15,7 @@ func PropagateContextToRequest(ctx context.Context, req *fasthttp.Request) {
 	)
 }
 
-// fastHttpCarrier implements TextMapCarrier for fasthttp.RequestHeader
+// fastHttpCarrier implements TextMapCarrier for fasthttp.RequestHeader.
 type fastHttpCarrier struct {
 	header *fasthttp.RequestHeader
 }
@@ -37,5 +37,6 @@ func (c *fastHttpCarrier) Keys() []string {
 	c.header.VisitAll(func(key, _ []byte) {
 		keys = append(keys, string(key))
 	})
+
 	return keys
 }

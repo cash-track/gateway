@@ -16,6 +16,7 @@ func FindParentContext(ctx context.Context) context.Context {
 	if c, ok := ctx.Value(traceCtxKey).(context.Context); ok {
 		return c
 	}
+
 	return ctx
 }
 
@@ -27,6 +28,7 @@ func FindTraceId(ctx *fasthttp.RequestCtx) string {
 	if id, ok := ctx.Value(traceIdCtxKey).(string); ok {
 		return id
 	}
+
 	return ""
 }
 
@@ -51,7 +53,7 @@ func TraceHandler(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 
 		span.SetAttributes(ResponseAttributes(&ctx.Response)...)
 
-		if ctx.Response.StatusCode() < 400 {
+		if ctx.Response.StatusCode() < fasthttp.StatusBadRequest {
 			span.SetStatus(codes.Ok, "")
 		} else {
 			span.SetStatus(codes.Error, "")

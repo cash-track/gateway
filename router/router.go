@@ -20,6 +20,7 @@ func New(api api.Handler, csrf csrf.Handler) *Router {
 		csrf:   csrf,
 	}
 	r.register()
+
 	return r
 }
 

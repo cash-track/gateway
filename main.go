@@ -6,6 +6,7 @@ import (
 	"time"
 
 	prom "github.com/flf2ko/fasthttp-prometheus"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
 
@@ -22,8 +23,9 @@ import (
 )
 
 const (
-	readBufferSize  = 1024 * 8
-	writeBufferSize = 1024 * 8
+	readBufferSize            = 1024 * 8
+	writeBufferSize           = 1024 * 8
+	redisClientConnectTimeout = 5 * time.Second
 )
 
 func main() {
@@ -95,7 +97,11 @@ func getRedisClient() *redis.Client {
 		Addr: config.Global.RedisConnection,
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := redisotel.InstrumentTracing(client); err != nil {
+		log.Fatalf("Error configuring OTEL instrument to redis: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), redisClientConnectTimeout)
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {

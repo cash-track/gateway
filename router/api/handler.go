@@ -56,9 +56,11 @@ func (h *HttpHandler) CaptchaVerifyHandler(ctx *fasthttp.RequestCtx) {
 	if ok, err := h.captcha.Verify(ctx); err != nil || !ok {
 		if err != nil {
 			response.NewCaptchaErrorResponse(err).Write(ctx)
+
 			return
 		} else {
 			response.NewCaptchaBadResponse().Write(ctx)
+
 			return
 		}
 	}
@@ -82,12 +84,14 @@ func (h *HttpHandler) FullForwardedHandler(ctx *fasthttp.RequestCtx) {
 			fmt.Errorf("request method %s is not allowed", ctx.Request.Header.Method()),
 			fasthttp.StatusBadRequest,
 		).Write(ctx)
+
 		return
 	}
 
 	err := h.service.ForwardRequest(ctx, nil)
 	if err != nil {
 		response.ByErrorAndStatus(err, fasthttp.StatusBadGateway).Write(ctx)
+
 		return
 	}
 }
@@ -98,17 +102,20 @@ func (h *HttpHandler) FullForwardedHandlerWithBody(ctx *fasthttp.RequestCtx, bod
 			fmt.Errorf("request method %s is not allowed", ctx.Request.Header.Method()),
 			fasthttp.StatusBadRequest,
 		).Write(ctx)
+
 		return
 	}
 
 	b, err := json.Marshal(body)
 	if err != nil {
 		response.ByError(err).Write(ctx)
+
 		return
 	}
 
 	if err := h.service.ForwardRequest(ctx, b); err != nil {
 		response.ByErrorAndStatus(err, fasthttp.StatusBadGateway).Write(ctx)
+
 		return
 	}
 }

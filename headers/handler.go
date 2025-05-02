@@ -6,7 +6,7 @@ import (
 	"github.com/cash-track/gateway/traces"
 )
 
-// Handler is a middleware to write default headers for each response
+// Handler is a middleware to write default headers for each response.
 func Handler(h fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
 		// disable setting automatically header value to identify if Content-Type set by internal handlers

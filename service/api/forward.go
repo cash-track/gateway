@@ -83,6 +83,7 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 
 	if err := s.http.Do(req, resp); err != nil {
 		span.RecordError(err)
+
 		return fmt.Errorf("API request error: %w", err)
 	}
 
@@ -123,6 +124,7 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		// execute request 2nd attempt
 		if err := s.http.Do(req, resp); err != nil {
 			retrySpan.RecordError(err)
+
 			return fmt.Errorf("API request with fresh token error: %w", err)
 		}
 
