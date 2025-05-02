@@ -13,9 +13,12 @@ ARG GIT_COMMIT
 ARG GIT_TAG
 ENV GIT_COMMIT=${GIT_COMMIT}
 ENV GIT_TAG=${GIT_TAG}
+ENV OTEL_SERVICE_VERSION=${GIT_TAG}
 
 RUN apk add ca-certificates
 WORKDIR /app
 COPY --from=builder /app/gateway /app/gateway
+COPY --from=builder /app/docker-entrypoint.sh /app/docker-entrypoint.sh
 EXPOSE 80
-CMD ["/app/gateway"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD []

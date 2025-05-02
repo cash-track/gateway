@@ -26,6 +26,7 @@ const (
 	UserAgent                     = "User-Agent"
 	Vary                          = "Vary"
 	XCtCaptchaChallenge           = "X-Ct-Captcha-Challenge"
+	XCtTraceId                    = "X-Ct-Trace-Id"
 	XForwardedFor                 = "X-Forwarded-For"
 	XRateLimit                    = "X-Ratelimit-Limit"
 	XRateLimitRemaining           = "X-Ratelimit-Remaining"
@@ -47,6 +48,7 @@ var (
 		strings.ToLower(RetryAfter):          true,
 		strings.ToLower(UserAgent):           true,
 		strings.ToLower(XCtCaptchaChallenge): true,
+		strings.ToLower(XCtTraceId):          true,
 		strings.ToLower(XRateLimit):          true,
 		strings.ToLower(XRateLimitRemaining): true,
 	}

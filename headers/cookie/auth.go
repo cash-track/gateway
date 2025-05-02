@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/valyala/fasthttp"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -54,4 +55,13 @@ func (a Auth) CanRefresh() bool {
 func (a Auth) GetRefreshTokenExpireDate() time.Time {
 	t, _ := time.Parse(time.RFC3339, a.RefreshTokenExpiredAt)
 	return t
+}
+
+func (a Auth) GetOpenTelemetryAttributes() []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.Bool("ct.auth.is_logged", a.IsLogged()),
+		attribute.Bool("ct.auth.can_refresh", a.CanRefresh()),
+		attribute.String("ct.auth.access_token_expire_at", a.AccessTokenExpiredAt),
+		attribute.String("ct.auth.refresh_token_expire_at", a.RefreshTokenExpiredAt),
+	}
 }

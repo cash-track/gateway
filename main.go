@@ -18,6 +18,7 @@ import (
 	apiHandler "github.com/cash-track/gateway/router/api"
 	csrfHandler "github.com/cash-track/gateway/router/csrf"
 	apiService "github.com/cash-track/gateway/service/api"
+	"github.com/cash-track/gateway/traces"
 )
 
 const (
@@ -26,7 +27,15 @@ const (
 )
 
 func main() {
+	ctx := context.Background()
+
 	config.Global.Load()
+
+	if _, tracerClose, err := traces.NewTracer(ctx); err != nil {
+		log.Fatalf("Error creating OpenTelemetry tracer: %v", err)
+	} else {
+		defer tracerClose()
+	}
 
 	redisClient := getRedisClient()
 	csrf := csrfHandler.NewRedisHandler(redisClient)
@@ -46,6 +55,7 @@ func main() {
 	}
 	h = headers.CorsHandler(h)
 	h = logger.DebugHandler(h)
+	h = traces.TraceHandler(h)
 
 	if config.Global.Compress {
 		h = fasthttp.CompressHandler(h)
