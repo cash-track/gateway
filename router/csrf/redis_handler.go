@@ -93,7 +93,7 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 			return
 		}
 
-		_, span := traces.GetTracer().Start(
+		spanCtx, span := traces.GetTracer().Start(
 			traces.FindParentContext(ctx),
 			fmt.Sprintf("csrf validate %s %s", ctx.Request.Header.Method(), ctx.URI().PathOriginal()),
 			trace.WithAttributes(traces.RequestAttributes(&ctx.Request)...),
@@ -103,7 +103,7 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 		userCtx := newUserContext(cookie.ReadCSRFCookie(ctx))
 		span.SetAttributes(traces.AttributesGetter(userCtx)...)
 
-		if err := r.validateCsrfRequest(userCtx, method); err != nil {
+		if err := r.validateCsrfRequest(spanCtx, userCtx, method); err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "invalid")
 			span.End()
@@ -117,7 +117,7 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 		h(ctx)
 
 		if userCtx.cookie.Auth.IsLogged() {
-			_, rotateSpan := traces.GetTracer().Start(
+			rotateSpanCtx, rotateSpan := traces.GetTracer().Start(
 				traces.FindParentContext(ctx),
 				fmt.Sprintf("csrf rotate %s %s", ctx.Request.Header.Method(), ctx.URI().PathOriginal()),
 				trace.WithAttributes(traces.RequestAttributes(&ctx.Request)...),
@@ -125,7 +125,7 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 			)
 			defer rotateSpan.End()
 
-			newToken, err := r.rotate(userCtx)
+			newToken, err := r.rotate(rotateSpanCtx, userCtx)
 			if err != nil {
 				rotateSpan.RecordError(err)
 				rotateSpan.SetStatus(codes.Error, "rotate error")
@@ -140,25 +140,25 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 	}
 }
 
-func (r *RedisHandler) validateCsrfRequest(ctx userContext, method string) error {
+func (r *RedisHandler) validateCsrfRequest(ctx context.Context, userCtx userContext, method string) error {
 	if _, ok := csrfRequiredForMethods[method]; !ok {
 		return nil
 	}
 
-	if !ctx.cookie.Auth.IsLogged() {
+	if !userCtx.cookie.Auth.IsLogged() {
 		return nil
 	}
 
-	if ctx.err != nil {
-		return fmt.Errorf("unable to verify with invalid user context: %w", ctx.err)
+	if userCtx.err != nil {
+		return fmt.Errorf("unable to verify with invalid user context: %w", userCtx.err)
 	}
 
-	return r.verify(ctx)
+	return r.verify(ctx, userCtx)
 }
 
 // RotateTokenHandler configure CSRF cookie for next request validation
 func (r *RedisHandler) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
-	_, span := traces.GetTracer().Start(
+	spanCtx, span := traces.GetTracer().Start(
 		traces.FindParentContext(ctx),
 		fmt.Sprintf("csrf rotate handler %s %s", ctx.Request.Header.Method(), ctx.URI().PathOriginal()),
 		trace.WithAttributes(traces.RequestAttributes(&ctx.Request)...),
@@ -175,7 +175,7 @@ func (r *RedisHandler) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	newToken, err := r.rotate(userCtx)
+	newToken, err := r.rotate(spanCtx, userCtx)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "unknown")
@@ -190,25 +190,25 @@ func (r *RedisHandler) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
 	span.SetStatus(codes.Ok, "")
 }
 
-func (r *RedisHandler) rotate(ctx userContext) (string, error) {
-	key := fmt.Sprintf("%s:%s", keyPrefix, ctx.context)
+func (r *RedisHandler) rotate(ctx context.Context, userCtx userContext) (string, error) {
+	key := fmt.Sprintf("%s:%s", keyPrefix, userCtx.context)
 
 	token := generateNewToken()
 
-	if err := r.client.SetEx(context.Background(), key, token, tokenTtl).Err(); err != nil {
+	if err := r.client.SetEx(ctx, key, token, tokenTtl).Err(); err != nil {
 		return "", fmt.Errorf("error on writing new token: %w", err)
 	}
 
 	return token, nil
 }
 
-func (r *RedisHandler) verify(ctx userContext) error {
-	key := fmt.Sprintf("%s:%s", keyPrefix, ctx.context)
+func (r *RedisHandler) verify(ctx context.Context, userCtx userContext) error {
+	key := fmt.Sprintf("%s:%s", keyPrefix, userCtx.context)
 
-	if cmd := r.client.Get(context.Background(), key); cmd.Err() != nil {
+	if cmd := r.client.Get(ctx, key); cmd.Err() != nil {
 		return fmt.Errorf("error on reading token: %w", cmd.Err())
-	} else if strings.Compare(ctx.cookie.Token, cmd.Val()) != 0 {
-		log.Printf("CSRF token is invalid: requested %s stored %s", ctx.cookie.Token, cmd.Val())
+	} else if strings.Compare(userCtx.cookie.Token, cmd.Val()) != 0 {
+		log.Printf("CSRF token is invalid: requested %s stored %s", userCtx.cookie.Token, cmd.Val())
 		return fmt.Errorf("invalid CSRF token")
 	}
 
