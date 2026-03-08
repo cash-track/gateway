@@ -96,7 +96,7 @@ func (h *HttpHandler) FullForwardedHandler(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (h *HttpHandler) FullForwardedHandlerWithBody(ctx *fasthttp.RequestCtx, body interface{}) {
+func (h *HttpHandler) FullForwardedHandlerWithBody(ctx *fasthttp.RequestCtx, body any) {
 	if _, ok := allowedMethods[string(ctx.Request.Header.Method())]; !ok {
 		response.ByErrorAndStatus(
 			fmt.Errorf("request method %s is not allowed", ctx.Request.Header.Method()),
