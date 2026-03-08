@@ -18,6 +18,7 @@ type Client interface {
 
 type FastHttpRetryClient struct {
 	http.Client
+
 	attempts uint
 }
 

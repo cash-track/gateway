@@ -26,9 +26,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26'
+
+      - name: Install GCC
+        run: sudo apt-get update && sudo apt-get install -y gcc
 
       - name: Build
+        env:
+          CGO_ENABLED: 1
         run: |
           go mod download
           go build -race -v ./...
@@ -36,7 +41,7 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.1.5
+          version: v2.11.2
 
   tests:
     name: Tests
@@ -49,14 +54,21 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26'
+
+      - name: Install GCC
+        run: sudo apt-get update && sudo apt-get install -y gcc
 
       - name: Build
+        env:
+          CGO_ENABLED: 1
         run: |
           go mod download
           go build -race -v ./...
 
       - name: Test
+        env:
+          CGO_ENABLED: 1
         run: go test -race -coverprofile=coverage.txt -covermode=atomic -v $(go list ./... | grep /gateway/ | grep -v /mocks)
 
       - name: Upload coverage to Codecov

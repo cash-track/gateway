@@ -9,6 +9,7 @@ import (
 
 type Router struct {
 	*router.Router
+
 	api  api.Handler
 	csrf csrf.Handler
 }
