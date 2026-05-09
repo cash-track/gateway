@@ -19,7 +19,7 @@ func TestLogout(t *testing.T) {
 	c := mocks.NewCaptchaProviderMock(ctrl)
 	h := NewHttp(config.Config{
 		WebsiteUrl: "https://test.com",
-	}, s, c)
+	}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 
