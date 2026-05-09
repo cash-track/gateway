@@ -394,6 +394,15 @@ func TestSeed(t *testing.T) {
 			expectCookie: false,
 			expectError:  false,
 		},
+		"ErrorOnInvalidAccessToken": {
+			auth: cookie.Auth{
+				AccessToken:  "not-a-valid-jwt",
+				RefreshToken: "refresh_token",
+			},
+			setup:        func(mock redismock.ClientMock) {},
+			expectCookie: false,
+			expectError:  true,
+		},
 		"ErrorOnRedisFailure": {
 			auth: cookie.Auth{
 				AccessToken:  accessToken,
