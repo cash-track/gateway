@@ -22,6 +22,11 @@ var allowedMethods = map[string]bool{
 	fasthttp.MethodOptions: true,
 }
 
+// CSRFSeeder seeds the CSRF token for a newly authenticated session.
+type CSRFSeeder interface {
+	Seed(ctx *fasthttp.RequestCtx, auth cookie.Auth) error
+}
+
 type Handler interface {
 	AuthSetHandler(ctx *fasthttp.RequestCtx)
 	AuthResetHandler(ctx *fasthttp.RequestCtx)
@@ -34,13 +39,15 @@ type HttpHandler struct {
 	config  config.Config
 	captcha captcha.Provider
 	service api.Service
+	csrf    CSRFSeeder
 }
 
-func NewHttp(config config.Config, service api.Service, captcha captcha.Provider) *HttpHandler {
+func NewHttp(config config.Config, service api.Service, captcha captcha.Provider, csrf CSRFSeeder) *HttpHandler {
 	return &HttpHandler{
 		config:  config,
 		captcha: captcha,
 		service: service,
+		csrf:    csrf,
 	}
 }
 

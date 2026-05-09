@@ -17,7 +17,7 @@ func TestAuthSetHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -39,7 +39,7 @@ func TestAuthSetHandlerCaptchaFail(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -56,7 +56,7 @@ func TestAuthSetHandlerCaptchaError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -73,7 +73,7 @@ func TestAuthSetHandlerLoginError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -95,7 +95,7 @@ func TestAuthResetHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -115,7 +115,7 @@ func TestFullForwardedHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -134,7 +134,7 @@ func TestFullForwardedHandlerError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -151,7 +151,7 @@ func TestFullForwardedHandlerRestrictedMethod(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodConnect)
@@ -166,7 +166,7 @@ func TestFullForwardedHandlerWithBody(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -190,7 +190,7 @@ func TestFullForwardedHandlerWithBodyError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -207,7 +207,7 @@ func TestFullForwardedHandlerWithBodyJsonError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -223,7 +223,7 @@ func TestFullForwardedHandlerWithBodyRestrictedMethod(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodConnect)
@@ -238,7 +238,7 @@ func TestHealthcheck(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
-	h := NewHttp(config.Config{}, s, c)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
 
 	s.EXPECT().Healthcheck().Return(nil)
 

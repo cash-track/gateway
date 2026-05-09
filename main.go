@@ -47,6 +47,7 @@ func main() {
 			config.Global,
 			apiService.NewHttp(retryhttp.NewFastHttpRetryClient(), config.Global),
 			captcha.NewGoogleReCaptchaProvider(retryhttp.NewFastHttpRetryClient(), config.Global),
+			csrf,
 		),
 		csrf,
 	)

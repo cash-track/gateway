@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/valyala/fasthttp"
 
@@ -21,8 +22,13 @@ func (h *HttpHandler) Login(ctx *fasthttp.RequestCtx) error {
 
 	auth.WriteCookie(ctx)
 
-	b, _ := h.newWebAppRedirect().ToJson()
+	// Seed the initial CSRF token. Non-fatal: if Redis is unavailable the user
+	// will recover automatically on their first mutation via GET /csrf.
+	if err := h.csrf.Seed(ctx, auth); err != nil {
+		log.Printf("csrf seed failed after login: %v", err)
+	}
 
+	b, _ := h.newWebAppRedirect().ToJson()
 	ctx.Response.SetBody(b)
 
 	return nil
