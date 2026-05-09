@@ -179,6 +179,31 @@ func (r *RedisHandler) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
 	span.SetStatus(codes.Ok, "")
 }
 
+// Seed initialises the CSRF token for a freshly authenticated session.
+// auth must be passed directly because the access token lives in the response
+// body at login time, not in the incoming request cookies.
+func (r *RedisHandler) Seed(ctx *fasthttp.RequestCtx, auth cookie.Auth) error {
+	if !auth.IsLogged() {
+		return nil
+	}
+
+	csrfCookie := cookie.CSRF{Auth: auth}
+	userCtx := newUserContext(csrfCookie)
+	if userCtx.err != nil {
+		return fmt.Errorf("csrf seed: invalid access token: %w", userCtx.err)
+	}
+
+	newToken, err := r.rotate(context.Background(), userCtx)
+	if err != nil {
+		return fmt.Errorf("csrf seed: rotate failed: %w", err)
+	}
+
+	userCtx.cookie.Token = newToken
+	userCtx.cookie.WriteCookie(ctx)
+
+	return nil
+}
+
 func (r *RedisHandler) validateCsrfRequest(ctx context.Context, userCtx userContext, method string) error {
 	if _, ok := csrfRequiredForMethods[method]; !ok {
 		return nil

@@ -12,6 +12,7 @@ package mocks
 import (
 	reflect "reflect"
 
+	cookie "github.com/cash-track/gateway/headers/cookie"
 	fasthttp "github.com/valyala/fasthttp"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -64,4 +65,18 @@ func (m *CsrfHandlerMock) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
 func (mr *CsrfHandlerMockMockRecorder) RotateTokenHandler(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RotateTokenHandler", reflect.TypeOf((*CsrfHandlerMock)(nil).RotateTokenHandler), ctx)
+}
+
+// Seed mocks base method.
+func (m *CsrfHandlerMock) Seed(ctx *fasthttp.RequestCtx, auth cookie.Auth) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Seed", ctx, auth)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Seed indicates an expected call of Seed.
+func (mr *CsrfHandlerMockMockRecorder) Seed(ctx, auth any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Seed", reflect.TypeOf((*CsrfHandlerMock)(nil).Seed), ctx, auth)
 }

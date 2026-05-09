@@ -357,3 +357,81 @@ func TestGetUserContextFromAccessToken(t *testing.T) {
 		})
 	}
 }
+
+func TestSeed(t *testing.T) {
+	accessToken, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": 123987,
+		"iat": 987654321,
+	}).SignedString([]byte("asd"))
+
+	for name, test := range map[string]struct {
+		auth         cookie.Auth
+		setup        func(mock redismock.ClientMock)
+		expectCookie bool
+		expectError  bool
+	}{
+		"SeedsTokenForLoggedInUser": {
+			auth: cookie.Auth{
+				AccessToken:  accessToken,
+				RefreshToken: "refresh_token",
+			},
+			setup: func(mock redismock.ClientMock) {
+				key := fmt.Sprintf("%s:%d:%d", keyPrefix, 123987, 987654321)
+				mock.CustomMatch(func(expected, actual []interface{}) error {
+					assert.NotNil(t, actual)
+					if s, ok := actual[1].(string); ok {
+						assert.IsType(t, "", s)
+					}
+					return nil
+				}).ExpectSetEx(key, nil, 0).SetVal("seeded_token")
+			},
+			expectCookie: true,
+			expectError:  false,
+		},
+		"NoOpForGuest": {
+			auth:         cookie.Auth{},
+			setup:        func(mock redismock.ClientMock) {},
+			expectCookie: false,
+			expectError:  false,
+		},
+		"ErrorOnRedisFailure": {
+			auth: cookie.Auth{
+				AccessToken:  accessToken,
+				RefreshToken: "refresh_token",
+			},
+			setup: func(mock redismock.ClientMock) {
+				key := fmt.Sprintf("%s:%d:%d", keyPrefix, 123987, 987654321)
+				mock.CustomMatch(func(expected, actual []interface{}) error {
+					return nil
+				}).ExpectSetEx(key, nil, 0).SetErr(errors.New("redis down"))
+			},
+			expectCookie: false,
+			expectError:  true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client, mock := redismock.NewClientMock()
+			test.setup(mock)
+
+			ctx := fasthttp.RequestCtx{}
+			handler := NewRedisHandler(client)
+			err := handler.Seed(&ctx, test.auth)
+
+			if test.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			if test.expectCookie {
+				assert.NotEmpty(t, ctx.Response.Header.PeekCookie(cookie.CsrfTokenCookieName))
+			} else {
+				assert.Empty(t, ctx.Response.Header.PeekCookie(cookie.CsrfTokenCookieName))
+			}
+
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+}
