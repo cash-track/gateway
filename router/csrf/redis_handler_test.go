@@ -20,10 +20,11 @@ func TestHandler(t *testing.T) {
 	}).SignedString([]byte("asd"))
 
 	for name, test := range map[string]struct {
-		request      *fasthttp.RequestCtx
-		setup        func(mock redismock.ClientMock)
-		expectPass   bool
-		expectStatus int
+		request             *fasthttp.RequestCtx
+		setup               func(mock redismock.ClientMock)
+		expectPass          bool
+		expectStatus        int
+		expectCsrfCookieSet bool
 	}{
 		"TokenValidForPost": {
 			request: func() *fasthttp.RequestCtx {
@@ -44,7 +45,8 @@ func TestHandler(t *testing.T) {
 					return nil
 				}).ExpectSetEx(key, nil, 0).SetVal("token_1")
 			},
-			expectPass: true,
+			expectPass:          true,
+			expectCsrfCookieSet: true,
 		},
 		"TokenInvalidForPost": {
 			request: func() *fasthttp.RequestCtx {
@@ -80,16 +82,10 @@ func TestHandler(t *testing.T) {
 				return &ctx
 			}(),
 			setup: func(mock redismock.ClientMock) {
-				key := fmt.Sprintf("%s:%d:%d", keyPrefix, 123987, 987654321)
-				mock.CustomMatch(func(expected, actual []interface{}) error {
-					assert.NotNil(t, actual)
-					if s, ok := actual[1].(string); ok {
-						assert.IsType(t, "", s)
-					}
-					return nil
-				}).ExpectSetEx(key, nil, 0).SetVal("token_1")
+				// No Redis calls expected: rotation must NOT happen for GET
 			},
-			expectPass: true,
+			expectPass:          true,
+			expectCsrfCookieSet: false,
 		},
 		"SkippedForGuest": {
 			request: func() *fasthttp.RequestCtx {
@@ -164,7 +160,12 @@ func TestHandler(t *testing.T) {
 			})(test.request)
 
 			assert.Equal(t, test.expectPass, handlersExecuted)
-			assert.NotEqual(t, string(test.request.Response.Header.PeekCookie(cookie.CsrfTokenCookieName)), "csrf_token")
+			if test.expectCsrfCookieSet {
+				assert.NotEmpty(t, test.request.Response.Header.PeekCookie(cookie.CsrfTokenCookieName))
+				assert.NotEqual(t, "csrf_token", string(test.request.Response.Header.PeekCookie(cookie.CsrfTokenCookieName)))
+			} else {
+				assert.Empty(t, test.request.Response.Header.PeekCookie(cookie.CsrfTokenCookieName))
+			}
 			if test.expectStatus > 0 {
 				assert.Equal(t, test.expectStatus, test.request.Response.StatusCode())
 			}

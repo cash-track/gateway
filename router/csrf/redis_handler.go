@@ -118,7 +118,7 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 
 		h(ctx)
 
-		if userCtx.cookie.Auth.IsLogged() {
+		if userCtx.cookie.Auth.IsLogged() && csrfRequiredForMethods[method] {
 			rotateSpanCtx, rotateSpan := traces.GetTracer().Start(
 				traces.FindParentContext(ctx),
 				fmt.Sprintf("csrf rotate %s %s", ctx.Request.Header.Method(), ctx.URI().PathOriginal()),
