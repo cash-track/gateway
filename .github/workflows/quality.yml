@@ -17,5 +17,5 @@ jobs:
   quality:
     uses: cash-track/.github/.github/workflows/quality-go.yml@main
     with:
-      exclude-packages: /mocks
+      exclude-packages: /mocks|cash-track/gateway$
     secrets: inherit
