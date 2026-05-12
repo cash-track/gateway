@@ -9,6 +9,7 @@ import (
 	"github.com/cash-track/gateway/captcha"
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers/cookie"
+	"github.com/cash-track/gateway/router/csrf"
 	"github.com/cash-track/gateway/router/response"
 	"github.com/cash-track/gateway/service/api"
 )
@@ -20,11 +21,6 @@ var allowedMethods = map[string]bool{
 	fasthttp.MethodPatch:   true,
 	fasthttp.MethodDelete:  true,
 	fasthttp.MethodOptions: true,
-}
-
-// CSRFSeeder seeds the CSRF token for a newly authenticated session.
-type CSRFSeeder interface {
-	Seed(ctx *fasthttp.RequestCtx, auth cookie.Auth) error
 }
 
 type Handler interface {
@@ -39,10 +35,10 @@ type HttpHandler struct {
 	config  config.Config
 	captcha captcha.Provider
 	service api.Service
-	csrf    CSRFSeeder
+	csrf    csrf.CSRFSeeder
 }
 
-func NewHttp(config config.Config, service api.Service, captcha captcha.Provider, csrf CSRFSeeder) *HttpHandler {
+func NewHttp(config config.Config, service api.Service, captcha captcha.Provider, csrf csrf.CSRFSeeder) *HttpHandler {
 	return &HttpHandler{
 		config:  config,
 		captcha: captcha,

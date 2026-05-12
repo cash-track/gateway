@@ -354,6 +354,45 @@ func TestForwardRequestWithAuthRefreshSecondFailNoSeed(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestForwardRequestWithAuthRefreshNon2xxNoSeed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusUnauthorized)
+		return nil
+	})
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+		return nil
+	})
+	// Retried request returns 500 — Seed must NOT be called.
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusInternalServerError)
+		return nil
+	})
+
+	csrf := mocks.NewCsrfHandlerMock(ctrl)
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, csrf)
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+	ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, "access_token")
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token")
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, fasthttp.StatusInternalServerError, ctx.Response.StatusCode())
+}
+
 func TestForwardResponse(t *testing.T) {
 	ctx := fasthttp.RequestCtx{}
 

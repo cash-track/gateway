@@ -134,7 +134,8 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		// Seed a fresh CSRF token keyed to the new access token's iat so the
 		// next mutating request is not rejected with 417. Non-fatal: the user
 		// can recover via GET /csrf if Redis is temporarily unavailable.
-		if s.csrf != nil {
+		// Only seed on 2xx to avoid advancing CSRF state when the retried request fails.
+		if s.csrf != nil && resp.StatusCode() >= fasthttp.StatusOK && resp.StatusCode() < fasthttp.StatusMultipleChoices {
 			if err := s.csrf.Seed(ctx, newAuth); err != nil {
 				log.Printf("[%s] csrf seed after token refresh: %s", remoteIp, err.Error())
 			}
