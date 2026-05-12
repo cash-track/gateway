@@ -40,7 +40,7 @@ func TestFullForwardRequestWithAuth(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	uri := &fasthttp.URI{}
 	_ = uri.Parse(nil, []byte("https://gateway.test.com/api/auth/profile"))
@@ -76,7 +76,7 @@ func TestForwardRequestWithBodyOverride(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -120,7 +120,7 @@ func TestForwardRequestWithAuthRefresh(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -154,7 +154,7 @@ func TestForwardRequestWithAuthRefreshFailLogout(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -201,7 +201,7 @@ func TestForwardRequestWithAuthRefreshSecondFail(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -224,10 +224,130 @@ func TestForwardRequestError(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.Error(t, err)
+}
+
+func TestForwardRequestWithAuthRefreshSeedsCsrf(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	// First call: original request gets 401
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusUnauthorized)
+		return nil
+	})
+	// Second call: refresh endpoint returns new tokens
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+		return nil
+	})
+	// Third call: retried original request succeeds
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+		return nil
+	})
+
+	csrf := mocks.NewCsrfHandlerMock(ctrl)
+	csrf.EXPECT().Seed(gomock.Any(), gomock.Any()).DoAndReturn(func(_ *fasthttp.RequestCtx, auth cookie.Auth) error {
+		assert.Equal(t, "new_access_token", auth.AccessToken)
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, csrf)
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+	ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, "access_token")
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token")
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), "new_access_token")
+}
+
+func TestForwardRequestWithAuthRefreshCsrfSeedError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusUnauthorized)
+		return nil
+	})
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+		return nil
+	})
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+		return nil
+	})
+
+	csrf := mocks.NewCsrfHandlerMock(ctrl)
+	csrf.EXPECT().Seed(gomock.Any(), gomock.Any()).Return(fmt.Errorf("redis: connection refused"))
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, csrf)
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+	ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, "access_token")
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token")
+
+	// CSRF seed failure must not propagate — ForwardRequest must succeed.
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), "new_access_token")
+}
+
+func TestForwardRequestWithAuthRefreshSecondFailNoSeed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusUnauthorized)
+		return nil
+	})
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+		return nil
+	})
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).Return(fmt.Errorf("broken pipe"))
+
+	// Seed must NOT be called when the retried request itself fails.
+	csrf := mocks.NewCsrfHandlerMock(ctrl)
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, csrf)
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+	ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, "access_token")
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token")
 
 	err := s.ForwardRequest(&ctx, nil)
 

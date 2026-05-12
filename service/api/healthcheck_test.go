@@ -37,7 +37,7 @@ func TestHealthcheckOk(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 	err := s.Healthcheck()
 
 	assert.NoError(t, err)
@@ -58,7 +58,7 @@ func TestHealthcheckFail(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 	err := s.Healthcheck()
 
 	assert.Error(t, err)
@@ -75,7 +75,7 @@ func TestHealthcheckError(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 	err := s.Healthcheck()
 
 	assert.Error(t, err)

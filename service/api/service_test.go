@@ -19,7 +19,7 @@ func TestNewClient(t *testing.T) {
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
 	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 
-	s := NewHttp(h, config.Config{})
+	s := NewHttp(h, config.Config{}, nil)
 
 	assert.NotNil(t, s.http)
 }
@@ -34,7 +34,7 @@ func TestSetRequestURI(t *testing.T) {
 	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	uri := fasthttp.URI{}
 
@@ -53,7 +53,7 @@ func TestCopyRequestURI(t *testing.T) {
 	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	src := fasthttp.URI{}
 	src.SetPath("/api/users/create one")

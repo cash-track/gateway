@@ -7,6 +7,7 @@ import (
 	"github.com/valyala/fasthttp"
 
 	"github.com/cash-track/gateway/config"
+	"github.com/cash-track/gateway/headers/cookie"
 	"github.com/cash-track/gateway/http/retryhttp"
 )
 
@@ -23,6 +24,11 @@ var methodsWithBody = map[string]bool{
 	fasthttp.MethodPatch: true,
 }
 
+// CSRFSeeder seeds the CSRF token for a newly authenticated or refreshed session.
+type CSRFSeeder interface {
+	Seed(ctx *fasthttp.RequestCtx, auth cookie.Auth) error
+}
+
 type Service interface {
 	ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) error
 	Healthcheck() error
@@ -31,9 +37,10 @@ type Service interface {
 type HttpService struct {
 	http   retryhttp.Client
 	config config.Config
+	csrf   CSRFSeeder
 }
 
-func NewHttp(http retryhttp.Client, config config.Config) *HttpService {
+func NewHttp(http retryhttp.Client, config config.Config, csrf CSRFSeeder) *HttpService {
 	http.WithReadTimeout(httpReadTimeout)
 	http.WithWriteTimeout(httpWriteTimeout)
 	http.WithRetryAttempts(httpRetryAttempts)
@@ -41,6 +48,7 @@ func NewHttp(http retryhttp.Client, config config.Config) *HttpService {
 	return &HttpService{
 		http:   http,
 		config: config,
+		csrf:   csrf,
 	}
 }
 

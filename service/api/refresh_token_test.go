@@ -47,7 +47,7 @@ func TestRefreshTokenOk(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	auth := cookie.Auth{
 		RefreshToken: oldRefreshToken,
@@ -78,7 +78,7 @@ func TestRefreshTokenFail(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	auth := cookie.Auth{}
 
@@ -100,7 +100,7 @@ func TestRefreshTokenError(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	auth := cookie.Auth{}
 
@@ -127,7 +127,7 @@ func TestRefreshTokenErrorBadResponse(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	auth := cookie.Auth{}
 
@@ -154,7 +154,7 @@ func TestRefreshTokenErrorLoggedOff(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	})
+	}, nil)
 
 	auth := cookie.Auth{}
 
