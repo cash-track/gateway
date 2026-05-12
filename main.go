@@ -45,7 +45,7 @@ func main() {
 	r := router.New(
 		apiHandler.NewHttp(
 			config.Global,
-			apiService.NewHttp(retryhttp.NewFastHttpRetryClient(), config.Global),
+			apiService.NewHttp(retryhttp.NewFastHttpRetryClient(), config.Global, csrf),
 			captcha.NewGoogleReCaptchaProvider(retryhttp.NewFastHttpRetryClient(), config.Global),
 			csrf,
 		),

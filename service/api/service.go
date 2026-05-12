@@ -8,6 +8,7 @@ import (
 
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/http/retryhttp"
+	"github.com/cash-track/gateway/router/csrf"
 )
 
 const (
@@ -31,9 +32,10 @@ type Service interface {
 type HttpService struct {
 	http   retryhttp.Client
 	config config.Config
+	csrf   csrf.CSRFSeeder
 }
 
-func NewHttp(http retryhttp.Client, config config.Config) *HttpService {
+func NewHttp(http retryhttp.Client, config config.Config, csrf csrf.CSRFSeeder) *HttpService {
 	http.WithReadTimeout(httpReadTimeout)
 	http.WithWriteTimeout(httpWriteTimeout)
 	http.WithRetryAttempts(httpRetryAttempts)
@@ -41,6 +43,7 @@ func NewHttp(http retryhttp.Client, config config.Config) *HttpService {
 	return &HttpService{
 		http:   http,
 		config: config,
+		csrf:   csrf,
 	}
 }
 
