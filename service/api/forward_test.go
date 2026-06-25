@@ -134,7 +134,7 @@ func TestForwardRequestWithAuthRefresh(t *testing.T) {
 	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.RefreshTokenCookieName)), "new_refresh_token")
 }
 
-func TestForwardRequestWithAuthRefreshFailLogout(t *testing.T) {
+func TestForwardRequestWithAuthRefreshExpiredLogsOut(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
@@ -149,6 +149,44 @@ func TestForwardRequestWithAuthRefreshFailLogout(t *testing.T) {
 
 		return nil
 	})
+	// Refresh call returns a clean 401: the refresh token is genuinely
+	// expired/invalid, so logging out (cookie deletion) is correct.
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusUnauthorized)
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, nil)
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+	ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, "access_token")
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token")
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, fasthttp.StatusUnauthorized, ctx.Response.StatusCode())
+
+	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), fmt.Sprintf("%s=;", cookie.AccessTokenCookieName))
+	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.RefreshTokenCookieName)), fmt.Sprintf("%s=;", cookie.RefreshTokenCookieName))
+}
+
+func TestForwardRequestWithAuthRefreshTransientKeepsSession(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusUnauthorized)
+		return nil
+	})
+	// Refresh call hits a transport error: the refresh token may still be
+	// valid, so the session must be preserved (no cookie deletion).
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).Return(fmt.Errorf("broken pipe"))
 
 	apiUrl, _ := url.Parse(endpoint)
@@ -164,9 +202,47 @@ func TestForwardRequestWithAuthRefreshFailLogout(t *testing.T) {
 	err := s.ForwardRequest(&ctx, nil)
 
 	assert.NoError(t, err)
+	assert.Equal(t, fasthttp.StatusServiceUnavailable, ctx.Response.StatusCode())
 
-	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), fmt.Sprintf("%s=;", cookie.AccessTokenCookieName))
-	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.RefreshTokenCookieName)), fmt.Sprintf("%s=;", cookie.RefreshTokenCookieName))
+	// Cookies must be preserved — no delete (no "name=;") was written.
+	assert.NotContains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), fmt.Sprintf("%s=;", cookie.AccessTokenCookieName))
+	assert.NotContains(t, string(ctx.Response.Header.PeekCookie(cookie.RefreshTokenCookieName)), fmt.Sprintf("%s=;", cookie.RefreshTokenCookieName))
+}
+
+func TestForwardRequestWithAuthRefreshApi5xxKeepsSession(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusUnauthorized)
+		return nil
+	})
+	// Refresh call returns a non-401 unexpected status (5xx): refresh_token.go
+	// surfaces this as err != nil, so the session must be preserved.
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusInternalServerError)
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, nil)
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+	ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, "access_token")
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token")
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, fasthttp.StatusServiceUnavailable, ctx.Response.StatusCode())
+
+	assert.NotContains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), fmt.Sprintf("%s=;", cookie.AccessTokenCookieName))
+	assert.NotContains(t, string(ctx.Response.Header.PeekCookie(cookie.RefreshTokenCookieName)), fmt.Sprintf("%s=;", cookie.RefreshTokenCookieName))
 }
 
 func TestForwardRequestWithAuthRefreshSecondFail(t *testing.T) {
