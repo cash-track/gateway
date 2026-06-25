@@ -99,8 +99,18 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 	// perform refresh token
 	newAuth, err := s.refreshToken(auth, spanCtx, ctx)
 	if err != nil {
+		// Transient failure: could not reach the API or it returned a non-401
+		// (e.g. 5xx). The refresh token may still be valid, so DO NOT delete
+		// cookies / log the user out. Preserve the session and return a
+		// retryable status; the client can retry once the API recovers.
 		span.RecordError(err)
-		log.Printf("[%s] refresh token attempt: %s", remoteIp, err.Error())
+		log.Printf("[%s] refresh token attempt (transient, keeping session): %s", remoteIp, err.Error())
+
+		resp.Reset()
+		resp.SetStatusCode(fasthttp.StatusServiceUnavailable)
+
+		// WriteCookie deliberately NOT called → cookies untouched.
+		return forwardResponse(ctx, resp)
 	}
 
 	if newAuth.IsLogged() {
@@ -142,6 +152,8 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		}
 	}
 
+	// err == nil and not logged ⇒ refresh token genuinely expired/invalid.
+	// Logging out (cookie deletion) is the correct behaviour here.
 	newAuth.WriteCookie(ctx)
 
 	return forwardResponse(ctx, resp)
