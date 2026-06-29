@@ -1,0 +1,862 @@
+openapi: 3.1.0
+
+info:
+  title: Cash-Track Gateway API
+  version: 1.0.0
+  license:
+    name: Proprietary
+    url: https://cash-track.app
+  description: |
+    The Cash-Track Gateway is a Go/FastHTTP reverse proxy that sits between the web clients and
+    the PHP backend API. Every request from the browser passes through the gateway.
+
+    ## Responsibilities
+
+    - **Cookie management** — stores JWT access/refresh tokens in `HttpOnly` cookies; converts
+      them to `Authorization: Bearer` headers before forwarding to the backend
+    - **CSRF protection** — Redis-backed token validation and rotation for all state-changing
+      requests made by authenticated users
+    - **Captcha verification** — validates Google reCAPTCHA v3 challenge on auth endpoints
+    - **Transparent token refresh** — intercepts `401` responses, silently refreshes the token
+      pair, and retries the original request
+    - **CORS** — validates `Origin` header against the allow-list and sets appropriate response headers
+    - **Path rewriting** — strips the `/api` prefix before forwarding to the backend
+
+    ## Path Rewriting
+
+    All `/api/*` paths are forwarded to the backend with the `/api` prefix removed:
+
+    ```
+    Gateway  /api/wallets  →  Backend  /wallets
+    Gateway  /api/auth/login  →  Backend  /auth/login
+    ```
+
+    ## Authentication
+
+    The gateway uses **cookie-based auth** for browsers. Clients do not manage tokens directly —
+    they are stored in cookies set by the gateway on successful login.
+
+    Authenticated requests are detected by the presence of the `cshtrka` cookie. The gateway
+    converts it to `Authorization: Bearer <token>` before forwarding.
+
+    ## CSRF Protection
+
+    For `POST`, `PUT`, `PATCH`, and `DELETE` requests by logged-in users the gateway validates
+    a CSRF token stored in the `cshtrkcsrf` cookie against a Redis-backed store. On each
+    successful mutating request the token is rotated. Call `GET /csrf` to obtain the initial token.
+
+    ## Captcha
+
+    Auth endpoints (`/api/auth/login`, `/api/auth/register`, `/api/auth/provider/google`,
+    `/api/auth/login/passkey`) require the client to send a Google reCAPTCHA v3 token in the
+    `X-Ct-Captcha-Challenge` request header. When `CAPTCHA_SECRET` is unset the check is skipped.
+
+servers:
+  - url: https://gateway.cash-track.app
+    description: Production
+  - url: https://gateway.dev-cash-track.app
+    description: Local development
+
+tags:
+  - name: Health
+    description: Liveness and readiness probes
+  - name: CSRF
+    description: CSRF token management
+  - name: Auth
+    description: Login, registration, and logout flows handled by the gateway
+  - name: Proxy
+    description: Generic reverse-proxy pass-through to the backend API
+
+paths:
+
+  # ===========================================================================
+  # HEALTH
+  # ===========================================================================
+  /live:
+    get:
+      operationId: liveness
+      summary: Liveness probe
+      description: |
+        Always returns `200 OK` as long as the gateway process is running.
+        Used by Kubernetes liveness checks.
+      tags: [Health]
+      security: []
+      responses:
+        "200":
+          description: Gateway is alive
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+
+  /ready:
+    get:
+      operationId: readiness
+      summary: Readiness probe
+      description: |
+        Checks whether the backend PHP API is reachable by calling its own healthcheck.
+        Returns `200` when the backend responds successfully, `500` otherwise.
+        Used by Kubernetes readiness checks.
+      tags: [Health]
+      security: []
+      responses:
+        "200":
+          description: Gateway and backend are ready
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+        "500":
+          description: Backend is unreachable
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "[api] nok"
+
+  # ===========================================================================
+  # CSRF
+  # ===========================================================================
+  /csrf:
+    get:
+      operationId: csrfRotate
+      summary: Rotate CSRF token
+      description: |
+        Generates a new CSRF token for the authenticated session, stores it in Redis
+        (`CT:csrf:{userId}:{iat}`, TTL 10 min), and delivers it via the `cshtrkcsrf` cookie.
+
+        Call this once after login to bootstrap the CSRF flow. Subsequent tokens are rotated
+        automatically after each mutating request.
+
+        Returns `401` when the user is not logged in (no valid `cshtrka` cookie).
+      tags: [CSRF]
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: New CSRF token issued
+          headers:
+            Set-Cookie:
+              description: "`cshtrkcsrf=<uuid-v7>; Path=/; Max-Age=600; Domain=<gateway-domain>`"
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ===========================================================================
+  # AUTH — gateway-handled flows
+  # ===========================================================================
+  /api/auth/login:
+    post:
+      operationId: authLogin
+      summary: Login with email and password
+      description: |
+        **Gateway-handled.** The request is:
+        1. Validated against Google reCAPTCHA v3 (`X-Ct-Captcha-Challenge` header)
+        2. Forwarded to the backend `POST /auth/login`
+        3. On success: JWT tokens are stored in `cshtrka` / `cshtrkr` cookies and a
+           redirect URL pointing to the web app is returned
+
+        The raw backend token payload is **not** forwarded to the client; the gateway
+        replaces it with the `redirectUrl` JSON response.
+      tags: [Auth]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CaptchaHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful — auth cookies set, redirect URL returned
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/AuthCookies"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedirectResponse"
+        "400":
+          $ref: "#/components/responses/CaptchaError"
+        "422":
+          $ref: "#/components/responses/BackendValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+  /api/auth/register:
+    post:
+      operationId: authRegister
+      summary: Register a new account
+      description: |
+        **Gateway-handled.** The request is:
+        1. Validated against Google reCAPTCHA v3
+        2. Forwarded to the backend `POST /auth/register`
+        3. On success: auth cookies set, redirect URL returned
+
+        See `POST /api/auth/login` for the full flow description.
+      tags: [Auth]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CaptchaHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "200":
+          description: Registration successful — auth cookies set, redirect URL returned
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/AuthCookies"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedirectResponse"
+        "400":
+          $ref: "#/components/responses/CaptchaError"
+        "422":
+          $ref: "#/components/responses/BackendValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+  /api/auth/provider/google:
+    post:
+      operationId: authGoogle
+      summary: Login or register via Google OAuth
+      description: |
+        **Gateway-handled.** Accepts a Google ID token, verifies captcha, forwards to the backend,
+        and sets auth cookies on success.
+      tags: [Auth]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CaptchaHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: Google ID token from the client-side Google Sign-In SDK
+      responses:
+        "200":
+          description: Authenticated via Google — auth cookies set, redirect URL returned
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/AuthCookies"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedirectResponse"
+        "400":
+          $ref: "#/components/responses/CaptchaError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+  /api/auth/login/passkey:
+    post:
+      operationId: authPasskeyLogin
+      summary: Complete WebAuthn passkey login
+      description: |
+        **Gateway-handled.** Verifies captcha, forwards the WebAuthn assertion to the backend,
+        and sets auth cookies on success.
+      tags: [Auth]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CaptchaHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasskeyLoginRequest"
+      responses:
+        "200":
+          description: Authenticated via passkey — auth cookies set, redirect URL returned
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/AuthCookies"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedirectResponse"
+        "400":
+          $ref: "#/components/responses/CaptchaError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+
+  /api/auth/login/passkey/init:
+    post:
+      operationId: authPasskeyLoginInit
+      summary: Initialise WebAuthn login challenge
+      description: |
+        **Gateway-handled (captcha only).** Verifies the reCAPTCHA challenge then proxies the
+        request to the backend `GET /auth/login/passkey/init` which returns
+        `PublicKeyCredentialRequestOptions`. The backend response is forwarded as-is.
+      tags: [Auth]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CaptchaHeader"
+      responses:
+        "200":
+          description: WebAuthn challenge options (forwarded from backend)
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Raw `PublicKeyCredentialRequestOptions` JSON from the backend
+        "400":
+          $ref: "#/components/responses/CaptchaError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/auth/logout:
+    post:
+      operationId: authLogout
+      summary: Logout and clear auth cookies
+      description: |
+        **Gateway-handled.** The flow:
+        1. Reads the refresh token from the `cshtrkr` cookie
+        2. Forwards `POST /auth/logout` to the backend with the refresh token in the request body
+        3. **Always** clears the `cshtrka` and `cshtrkr` cookies regardless of the backend response
+        4. Returns a redirect URL pointing to the marketing website
+
+        No `Authorization` header is required — the gateway extracts the token from the cookie.
+        The gateway does **not** return `401` on unauthenticated calls — cookies are cleared and
+        the redirect is returned in all cases.
+      tags: [Auth]
+      security:
+        - cookieAuth: []
+        - {}
+      responses:
+        "200":
+          description: |
+            Logged out — auth cookies cleared, redirect URL returned. This is always the response
+            regardless of whether the user was authenticated or what the backend returned.
+          headers:
+            Set-Cookie:
+              description: |
+                Both auth cookies are deleted:
+                `cshtrka=; Expires=Thu, 01 Jan 1970 00:00:00 GMT`
+                `cshtrkr=; Expires=Thu, 01 Jan 1970 00:00:00 GMT`
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedirectResponse"
+        "417":
+          $ref: "#/components/responses/CsrfError"
+
+  # ===========================================================================
+  # PROXY — generic pass-through
+  # ===========================================================================
+  /api/{path}:
+    parameters:
+      - name: path
+        in: path
+        required: true
+        description: Any backend API path (everything after `/api/`)
+        schema:
+          type: string
+    get:
+      operationId: proxyGet
+      summary: Proxy GET request to backend
+      description: |
+        Forwards the request to the backend API after stripping the `/api` prefix.
+        If the user is logged in (`cshtrka` cookie present) the gateway attaches
+        `Authorization: Bearer <token>` before forwarding.
+
+        **Transparent token refresh:** if the backend returns `401` and a refresh token
+        cookie (`cshtrkr`) exists, the gateway automatically refreshes the token pair,
+        updates the cookies, and retries the request — all transparent to the client.
+      tags: [Proxy]
+      security:
+        - cookieAuth: []
+        - {}
+      responses:
+        "200":
+          $ref: "#/components/responses/ProxySuccess"
+        "400":
+          $ref: "#/components/responses/BackendError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/BackendError"
+        "404":
+          $ref: "#/components/responses/BackendError"
+        "422":
+          $ref: "#/components/responses/BackendValidationError"
+        "429":
+          $ref: "#/components/responses/BackendError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+    post:
+      operationId: proxyPost
+      summary: Proxy POST request to backend
+      description: |
+        Forwards the request to the backend API. Authenticated requests require a valid
+        CSRF token in the `cshtrkcsrf` cookie (when CSRF protection is enabled).
+        After a successful response the CSRF token is rotated.
+      tags: [Proxy]
+      security:
+        - cookieAuth: []
+        - {}
+      parameters:
+        - $ref: "#/components/parameters/CsrfCookie"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/ProxySuccess"
+        "400":
+          $ref: "#/components/responses/BackendError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/BackendError"
+        "404":
+          $ref: "#/components/responses/BackendError"
+        "417":
+          $ref: "#/components/responses/CsrfError"
+        "422":
+          $ref: "#/components/responses/BackendValidationError"
+        "429":
+          $ref: "#/components/responses/BackendError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+    put:
+      operationId: proxyPut
+      summary: Proxy PUT request to backend
+      description: Forwards PUT request. CSRF token required for authenticated users.
+      tags: [Proxy]
+      security:
+        - cookieAuth: []
+        - {}
+      parameters:
+        - $ref: "#/components/parameters/CsrfCookie"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/ProxySuccess"
+        "400":
+          $ref: "#/components/responses/BackendError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/BackendError"
+        "417":
+          $ref: "#/components/responses/CsrfError"
+        "422":
+          $ref: "#/components/responses/BackendValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+    patch:
+      operationId: proxyPatch
+      summary: Proxy PATCH request to backend
+      description: Forwards PATCH request. CSRF token required for authenticated users.
+      tags: [Proxy]
+      security:
+        - cookieAuth: []
+        - {}
+      parameters:
+        - $ref: "#/components/parameters/CsrfCookie"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          $ref: "#/components/responses/ProxySuccess"
+        "400":
+          $ref: "#/components/responses/BackendError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/BackendError"
+        "417":
+          $ref: "#/components/responses/CsrfError"
+        "422":
+          $ref: "#/components/responses/BackendValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+    delete:
+      operationId: proxyDelete
+      summary: Proxy DELETE request to backend
+      description: Forwards DELETE request. CSRF token required for authenticated users.
+      tags: [Proxy]
+      security:
+        - cookieAuth: []
+        - {}
+      parameters:
+        - $ref: "#/components/parameters/CsrfCookie"
+      responses:
+        "200":
+          $ref: "#/components/responses/ProxySuccess"
+        "400":
+          $ref: "#/components/responses/BackendError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/BackendError"
+        "417":
+          $ref: "#/components/responses/CsrfError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+    options:
+      operationId: proxyOptions
+      summary: CORS preflight
+      description: |
+        Handles CORS preflight requests. CSRF validation is bypassed for OPTIONS.
+        The gateway responds with the appropriate `Access-Control-*` headers based on
+        the `CORS_ALLOWED_ORIGINS` configuration.
+      tags: [Proxy]
+      security: []
+      responses:
+        "200":
+          description: Preflight accepted
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+                example: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+                example: "Content-Type,X-Ct-Captcha-Challenge,*"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+                example: "true"
+
+# =============================================================================
+# COMPONENTS
+# =============================================================================
+components:
+
+  # ---------------------------------------------------------------------------
+  # SECURITY SCHEMES
+  # ---------------------------------------------------------------------------
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: cshtrka
+      description: |
+        JWT access token stored in the `cshtrka` HttpOnly cookie. Set automatically by the gateway
+        on successful login. The gateway converts it to an `Authorization: Bearer` header before
+        forwarding requests to the backend — clients never manage Bearer tokens directly.
+
+  # ---------------------------------------------------------------------------
+  # PARAMETERS
+  # ---------------------------------------------------------------------------
+  parameters:
+    CaptchaHeader:
+      name: X-Ct-Captcha-Challenge
+      in: header
+      required: false
+      description: |
+        Google reCAPTCHA v3 token obtained client-side via `grecaptcha.execute()`.
+        Required on auth endpoints when `CAPTCHA_SECRET` is configured on the gateway.
+        Omit only in environments where captcha is disabled.
+      schema:
+        type: string
+
+    CsrfCookie:
+      name: cshtrkcsrf
+      in: cookie
+      required: false
+      description: |
+        CSRF token UUID. Required for authenticated `POST`, `PUT`, `PATCH`, and `DELETE`
+        requests when CSRF protection is enabled. Obtain the initial token via `GET /csrf`;
+        subsequent tokens are rotated automatically after each mutating request.
+      schema:
+        type: string
+        format: uuid
+
+  # ---------------------------------------------------------------------------
+  # HEADERS
+  # ---------------------------------------------------------------------------
+  headers:
+    AuthCookies:
+      description: |
+        Two `Set-Cookie` headers are emitted on successful authentication. Both cookies share
+        the same expiry — `refreshTokenExpiredAt` from the backend auth response:
+        - `cshtrka=<access-token>; Path=/; Expires=<refreshTokenExpiredAt>; Domain=<gateway-domain>[; Secure]`
+        - `cshtrkr=<refresh-token>; Path=/; Expires=<refreshTokenExpiredAt>; Domain=<gateway-domain>[; Secure]`
+
+        The `Secure` attribute is added when `GATEWAY_URL` uses HTTPS.
+      schema:
+        type: string
+
+    TraceId:
+      description: OpenTelemetry trace ID for the request, useful for correlating logs and traces.
+      schema:
+        type: string
+        example: "4bf92f3577b34da6a3ce929d0e0e4736"
+
+  # ---------------------------------------------------------------------------
+  # SCHEMAS
+  # ---------------------------------------------------------------------------
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 6
+
+    RegisterRequest:
+      type: object
+      required: [name, nickName, email, password, passwordConfirmation, locale]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        lastName:
+          type: string
+        nickName:
+          type: string
+          minLength: 3
+          pattern: "^[a-zA-Z0-9_]+$"
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 6
+        passwordConfirmation:
+          type: string
+          format: password
+          minLength: 6
+        locale:
+          type: string
+          example: en
+
+    PasskeyLoginRequest:
+      type: object
+      required: [challenge, data]
+      properties:
+        challenge:
+          type: string
+          description: Challenge string from `GET /api/auth/login/passkey/init`
+        data:
+          type: string
+          description: JSON-stringified `PublicKeyCredential` assertion from the authenticator
+
+    RedirectResponse:
+      type: object
+      description: |
+        Returned by the gateway after login and logout flows instead of the raw backend token
+        response. The client should navigate to `redirectUrl`.
+      required: [redirectUrl]
+      properties:
+        redirectUrl:
+          type: string
+          format: uri
+          description: |
+            After login: URL of the web application (`WEBAPP_URL`).
+            After logout: URL of the marketing website (`WEBSITE_URL`).
+          example: https://my.cash-track.app
+
+    Error:
+      type: object
+      description: Standard gateway error envelope.
+      required: [message]
+      properties:
+        message:
+          type: string
+          description: Human-readable error description
+          example: Unexpected error happened. Please try again later.
+        error:
+          type: string
+          description: Internal error detail (may be empty)
+
+    ValidationError:
+      type: object
+      description: Field-level validation errors forwarded from the backend (HTTP 422).
+      required: [errors]
+      properties:
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            email: ["Must be a valid email address"]
+            password: ["Must be at least 6 characters"]
+
+  # ---------------------------------------------------------------------------
+  # RESPONSES
+  # ---------------------------------------------------------------------------
+  responses:
+    ProxySuccess:
+      description: |
+        Successful response proxied from the backend API. Body and headers are forwarded
+        as-is (status code, JSON body, Content-Type, rate-limit headers, etc.).
+      headers:
+        X-Ct-Trace-Id:
+          $ref: "#/components/headers/TraceId"
+        Access-Control-Allow-Origin:
+          schema:
+            type: string
+        Access-Control-Allow-Credentials:
+          schema:
+            type: string
+            example: "true"
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+            description: Backend response body (varies per endpoint — see the Backend API spec)
+
+    Unauthorized:
+      description: |
+        Not authenticated. Either the `cshtrka` cookie is missing/expired and the automatic
+        token refresh also failed (or no refresh token was present), or CSRF validation failed
+        with a missing user context.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Unauthorized.
+            error: ""
+
+    CaptchaError:
+      description: |
+        Google reCAPTCHA v3 validation failed. The client should refresh the captcha token
+        and retry the request.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Captcha validation unsuccessful. Please try again.
+            error: ""
+
+    CsrfError:
+      description: |
+        CSRF token validation failed (HTTP 417 Expectation Failed). The `cshtrkcsrf` cookie
+        is missing, expired, or does not match the Redis-stored token. Call `GET /csrf` to
+        obtain a fresh token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: CSRF validation failed. Please refresh and try again.
+            error: ""
+
+    BackendError:
+      description: Error response forwarded from the backend API.
+      headers:
+        X-Ct-Trace-Id:
+          $ref: "#/components/headers/TraceId"
+        Retry-After:
+          description: Present on 429 responses
+          schema:
+            type: integer
+        X-RateLimit:
+          schema:
+            type: string
+        X-RateLimit-Remaining:
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    BackendValidationError:
+      description: Validation error forwarded from the backend API (HTTP 422).
+      headers:
+        X-Ct-Trace-Id:
+          $ref: "#/components/headers/TraceId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationError"
+
+    InternalError:
+      description: |
+        Gateway internal error — either an unexpected captcha service response or a gateway-side
+        failure before the request was forwarded.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Unexpected response from captcha validation service. Please try again later.
+            error: "connection refused"
+
+    BadGateway:
+      description: |
+        The backend API returned an unexpected status or was unreachable. The gateway
+        returns `502` when it cannot process the backend response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Unexpected error happened. Please try again later.
+            error: ""
+
+# =============================================================================
+# GLOBAL SECURITY
+# =============================================================================
+security:
+  - cookieAuth: []
