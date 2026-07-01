@@ -11,6 +11,7 @@ func TestConfigLoad(t *testing.T) {
 	_ = os.Setenv("GATEWAY_ADDRESS", ":80")
 	_ = os.Setenv("GATEWAY_COMPRESS", "true")
 	_ = os.Setenv("DEBUG_HTTP", "false")
+	_ = os.Setenv("TRACE_CAPTURE_BODY", "false")
 	_ = os.Setenv("API_URL", "http://api:80")
 	_ = os.Setenv("GATEWAY_URL", "https://gateway.dev.cash-track.app:8081")
 	_ = os.Setenv("HTTPS_ENABLED", "true")
@@ -24,6 +25,7 @@ func TestConfigLoad(t *testing.T) {
 	assert.Equal(t, ":80", config.Address)
 	assert.Equal(t, true, config.Compress)
 	assert.Equal(t, false, config.DebugHttp)
+	assert.Equal(t, false, config.TraceCaptureBody)
 
 	assert.NotNil(t, config.ApiURI)
 	assert.Equal(t, "http", config.ApiURI.Scheme)

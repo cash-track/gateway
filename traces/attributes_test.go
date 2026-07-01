@@ -1,6 +1,8 @@
 package traces
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/valyala/fasthttp"
@@ -166,5 +168,83 @@ cookie: ***`,
 				t.Errorf("SanitizeHTTPHeaders() = %v, want %v", result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestSanitizeJSONBody(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		body        string
+		expected    string
+	}{
+		{
+			name:        "plain JSON object is unchanged",
+			contentType: "application/json",
+			body:        `{"email":"user@example.com","remember":true}`,
+			expected:    `{"email":"user@example.com","remember":true}`,
+		},
+		{
+			name:        "top level sensitive fields are redacted",
+			contentType: "application/json",
+			body:        `{"email":"user@example.com","password":"hunter2","passwordConfirmation":"hunter2"}`,
+			expected:    `{"email":"user@example.com","password":"***","passwordConfirmation":"***"}`,
+		},
+		{
+			name:        "nested sensitive fields are redacted",
+			contentType: "application/json; charset=utf-8",
+			body:        `{"data":{"accessToken":"abc","refreshToken":"def","clientSecret":"xyz"},"ok":true}`,
+			expected:    `{"data":{"accessToken":"***","clientSecret":"***","refreshToken":"***"},"ok":true}`,
+		},
+		{
+			name:        "sensitive fields inside arrays are redacted",
+			contentType: "application/json",
+			body:        `[{"token":"a"},{"token":"b"}]`,
+			expected:    `[{"token":"***"},{"token":"***"}]`,
+		},
+		{
+			name:        "non-json content-type is omitted",
+			contentType: "multipart/form-data; boundary=x",
+			body:        "--x\r\nsome binary data\r\n--x--",
+			expected:    "(omitted: content-type multipart/form-data; boundary=x)",
+		},
+		{
+			name:        "malformed json is omitted",
+			contentType: "application/json",
+			body:        "{not valid json",
+			expected:    "(omitted: body is not valid JSON)",
+		},
+		{
+			name:        "empty body is reported as empty",
+			contentType: "application/json",
+			body:        "",
+			expected:    "(empty)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SanitizeJSONBody([]byte(tt.contentType), []byte(tt.body))
+			if result != tt.expected {
+				t.Errorf("SanitizeJSONBody() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSanitizeJSONBodyTruncatesOversizedBody(t *testing.T) {
+	large, err := json.Marshal(map[string]string{"data": strings.Repeat("x", 10000)})
+	if err != nil {
+		t.Fatalf("failed to marshal fixture: %v", err)
+	}
+
+	result := SanitizeJSONBody([]byte("application/json"), large)
+
+	if !strings.HasSuffix(result, bodyTruncatedNote) {
+		t.Errorf("expected result to end with %q, got suffix: %q", bodyTruncatedNote, result)
+	}
+
+	if len(result) != bodyCaptureMaxSize+len(bodyTruncatedNote) {
+		t.Errorf("expected truncated length %d, got %d", bodyCaptureMaxSize+len(bodyTruncatedNote), len(result))
 	}
 }

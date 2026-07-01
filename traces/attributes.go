@@ -1,6 +1,8 @@
 package traces
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -10,8 +12,21 @@ import (
 )
 
 const (
-	headerPartsCount = 2
+	headerPartsCount   = 2
+	bodyCaptureMaxSize = 4096
+	bodyTruncatedNote  = "...(truncated)"
 )
+
+// sensitiveBodyFieldSubstrings matches JSON field names (case-insensitive, substring)
+// that must be redacted from captured request/response bodies. Substring matching
+// (rather than an exact-name set) also catches variants like passwordConfirmation
+// or newPasswordConfirmation without needing to enumerate every field name.
+var sensitiveBodyFieldSubstrings = []string{
+	"password",
+	"token",
+	"secret",
+	"apikey",
+}
 
 type OpenTelemetryAttributesGetter interface {
 	GetOpenTelemetryAttributes() []attribute.KeyValue
@@ -57,6 +72,84 @@ func ResponseAttributes(res *fasthttp.Response) []attribute.KeyValue {
 		semconv.HTTPResponseSizeKey.Int(res.Header.ContentLength()),
 		attribute.String("http.response.headers", SanitizeHTTPHeaders(res.Header.String())),
 	}
+}
+
+// RequestBodyAttribute captures a redacted, size-capped copy of the request body as a
+// span attribute. Only attempted for JSON bodies; anything else (multipart uploads,
+// empty bodies) is replaced with a placeholder so binary data never reaches Tempo.
+func RequestBodyAttribute(req *fasthttp.Request) attribute.KeyValue {
+	return attribute.String("http.request.body", SanitizeJSONBody(req.Header.ContentType(), req.Body()))
+}
+
+// ResponseBodyAttribute captures a redacted, size-capped copy of the response body as a
+// span attribute. See RequestBodyAttribute.
+func ResponseBodyAttribute(res *fasthttp.Response) attribute.KeyValue {
+	return attribute.String("http.response.body", SanitizeJSONBody(res.Header.ContentType(), res.Body()))
+}
+
+// SanitizeJSONBody redacts sensitive fields from a JSON body and caps its size.
+// The body is fully parsed and re-marshalled before truncation so a size cutoff
+// can never land mid-field and leak part of a secret.
+func SanitizeJSONBody(contentType, body []byte) string {
+	if len(body) == 0 {
+		return "(empty)"
+	}
+
+	if !bytes.Contains(bytes.ToLower(contentType), []byte("application/json")) {
+		return fmt.Sprintf("(omitted: content-type %s)", string(contentType))
+	}
+
+	var parsed any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return "(omitted: body is not valid JSON)"
+	}
+
+	redacted, err := json.Marshal(redactJSONValue(parsed))
+	if err != nil {
+		return "(omitted: failed to re-marshal redacted body)"
+	}
+
+	if len(redacted) > bodyCaptureMaxSize {
+		return string(redacted[:bodyCaptureMaxSize]) + bodyTruncatedNote
+	}
+
+	return string(redacted)
+}
+
+func redactJSONValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		result := make(map[string]any, len(v))
+		for key, val := range v {
+			if isSensitiveBodyField(key) {
+				result[key] = "***"
+			} else {
+				result[key] = redactJSONValue(val)
+			}
+		}
+
+		return result
+	case []any:
+		result := make([]any, len(v))
+		for i, val := range v {
+			result[i] = redactJSONValue(val)
+		}
+
+		return result
+	default:
+		return v
+	}
+}
+
+func isSensitiveBodyField(key string) bool {
+	key = strings.ToLower(key)
+	for _, substr := range sensitiveBodyFieldSubstrings {
+		if strings.Contains(key, substr) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func SanitizeHTTPHeaders(raw string) string {

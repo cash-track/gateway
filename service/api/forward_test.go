@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -491,6 +492,7 @@ func TestForwardResponse(t *testing.T) {
 
 	assert.Equal(t, "test.com", string(ctx.Response.Header.Peek(headers.AccessControlAllowOrigin)))
 	assert.Equal(t, "true", string(ctx.Response.Header.Peek(headers.AccessControlAllowCredentials)))
+	assert.Equal(t, strings.Join(headers.CorsExposedHeaders, ","), string(ctx.Response.Header.Peek(headers.AccessControlExposeHeaders)))
 	assert.Equal(t, "GET,POST", string(ctx.Response.Header.Peek(headers.AccessControlAllowMethods)))
 	assert.Equal(t, "Content-Type,Accept-Language", string(ctx.Response.Header.Peek(headers.AccessControlAllowHeaders)))
 	assert.Equal(t, "3600", string(ctx.Response.Header.Peek(headers.AccessControlMaxAge)))
@@ -499,4 +501,17 @@ func TestForwardResponse(t *testing.T) {
 	assert.Equal(t, "Content-Type,X-Rate-Limit", string(ctx.Response.Header.Peek(headers.Vary)))
 	assert.Equal(t, "123", string(ctx.Response.Header.Peek(headers.XRateLimit)))
 	assert.Equal(t, "2", string(ctx.Response.Header.Peek(headers.XRateLimitRemaining)))
+}
+
+func TestForwardResponseWithoutOriginSkipsCorsHeaders(t *testing.T) {
+	ctx := fasthttp.RequestCtx{}
+
+	resp := fasthttp.Response{}
+	resp.SetStatusCode(fasthttp.StatusOK)
+
+	err := forwardResponse(&ctx, &resp)
+
+	assert.NoError(t, err)
+	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlAllowCredentials))
+	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlExposeHeaders))
 }

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/valyala/fasthttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers"
 	"github.com/cash-track/gateway/headers/cookie"
 	"github.com/cash-track/gateway/logger"
@@ -68,6 +70,7 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 				traces.Attributes(attribute.String("http.request.real_ip", remoteIp)),
 				traces.AttributesGetter(auth),
 				traces.RequestAttributes(req),
+				requestBodyAttributes(req),
 			)...,
 		),
 	)
@@ -91,6 +94,7 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 	logger.FullForwarded(ctx, req, resp, ServiceId)
 
 	span.SetAttributes(traces.ResponseAttributes(resp)...)
+	span.SetAttributes(responseBodyAttributes(resp)...)
 
 	if !auth.IsLogged() || !auth.CanRefresh() || resp.StatusCode() != fasthttp.StatusUnauthorized {
 		return forwardResponse(ctx, resp)
@@ -126,6 +130,7 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 					traces.Attributes(attribute.String("http.request.real_ip", remoteIp)),
 					traces.AttributesGetter(auth),
 					traces.RequestAttributes(req),
+					requestBodyAttributes(req),
 				)...,
 			),
 		)
@@ -140,6 +145,7 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 
 		logger.DebugResponse(resp, ServiceId)
 		retrySpan.SetAttributes(traces.ResponseAttributes(resp)...)
+		retrySpan.SetAttributes(responseBodyAttributes(resp)...)
 
 		// Seed a fresh CSRF token keyed to the new access token's iat so the
 		// next mutating request is not rejected with 417. Non-fatal: the user
@@ -177,7 +183,28 @@ func forwardResponse(ctx *fasthttp.RequestCtx, resp *fasthttp.Response) error {
 
 	if val := ctx.Response.Header.Peek(headers.AccessControlAllowOrigin); val != nil {
 		ctx.Response.Header.Set(headers.AccessControlAllowCredentials, "true")
+		ctx.Response.Header.Set(headers.AccessControlExposeHeaders, strings.Join(headers.CorsExposedHeaders, ","))
 	}
 
 	return nil
+}
+
+// requestBodyAttributes returns a redacted body span attribute for req, or nil when
+// body capture is disabled via TRACE_CAPTURE_BODY.
+func requestBodyAttributes(req *fasthttp.Request) []attribute.KeyValue {
+	if !config.Global.TraceCaptureBody {
+		return nil
+	}
+
+	return traces.Attributes(traces.RequestBodyAttribute(req))
+}
+
+// responseBodyAttributes returns a redacted body span attribute for resp, or nil when
+// body capture is disabled via TRACE_CAPTURE_BODY.
+func responseBodyAttributes(resp *fasthttp.Response) []attribute.KeyValue {
+	if !config.Global.TraceCaptureBody {
+		return nil
+	}
+
+	return traces.Attributes(traces.ResponseBodyAttribute(resp))
 }

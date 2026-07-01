@@ -14,6 +14,7 @@ const (
 	AccessControlAllowMethods     = "Access-Control-Allow-Methods"
 	AccessControlAllowHeaders     = "Access-Control-Allow-Headers"
 	AccessControlAllowCredentials = "Access-Control-Allow-Credentials"
+	AccessControlExposeHeaders    = "Access-Control-Expose-Headers"
 	AccessControlRequestMethod    = "Access-Control-Request-Method"
 	AccessControlRequestHeaders   = "Access-Control-Request-Headers"
 	AccessControlMaxAge           = "Access-Control-Max-Age"

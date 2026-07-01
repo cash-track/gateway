@@ -25,6 +25,7 @@ func TestCorsHandler(t *testing.T) {
 		assert.Equal(t, strings.Join(CorsAllowedMethods, ","), string(ctx.Response.Header.Peek(AccessControlAllowMethods)))
 		assert.Equal(t, strings.Join(CorsAllowedHeaders, ","), string(ctx.Response.Header.Peek(AccessControlAllowHeaders)))
 		assert.Equal(t, "test.com", string(ctx.Response.Header.Peek(AccessControlAllowOrigin)))
+		assert.Equal(t, strings.Join(CorsExposedHeaders, ","), string(ctx.Response.Header.Peek(AccessControlExposeHeaders)))
 	})
 
 	t.Run("AllowOptionsStatusAlwaysOk", func(t *testing.T) {
@@ -52,6 +53,7 @@ func TestCorsHandler(t *testing.T) {
 		assert.Empty(t, ctx.Response.Header.Peek(AccessControlAllowMethods))
 		assert.Empty(t, ctx.Response.Header.Peek(AccessControlAllowHeaders))
 		assert.Empty(t, ctx.Response.Header.Peek(AccessControlAllowCredentials))
+		assert.Empty(t, ctx.Response.Header.Peek(AccessControlExposeHeaders))
 	})
 
 	t.Run("RejectNotAllowed", func(t *testing.T) {
@@ -66,6 +68,7 @@ func TestCorsHandler(t *testing.T) {
 		assert.Empty(t, ctx.Response.Header.Peek(AccessControlAllowMethods))
 		assert.Empty(t, ctx.Response.Header.Peek(AccessControlAllowHeaders))
 		assert.Empty(t, ctx.Response.Header.Peek(AccessControlAllowCredentials))
+		assert.Empty(t, ctx.Response.Header.Peek(AccessControlExposeHeaders))
 	})
 
 	t.Run("RejectAllowedByUpstream", func(t *testing.T) {
@@ -81,6 +84,7 @@ func TestCorsHandler(t *testing.T) {
 		assert.Empty(t, ctx.Response.Header.Peek(AccessControlAllowMethods))
 		assert.Empty(t, ctx.Response.Header.Peek(AccessControlAllowHeaders))
 		assert.Empty(t, ctx.Response.Header.Peek(AccessControlAllowCredentials))
+		assert.Empty(t, ctx.Response.Header.Peek(AccessControlExposeHeaders))
 	})
 
 }

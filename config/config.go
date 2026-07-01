@@ -27,7 +27,8 @@ type Config struct {
 
 	CorsAllowedOrigins map[string]bool
 
-	DebugHttp bool
+	DebugHttp        bool
+	TraceCaptureBody bool
 
 	CsrfEnabled     bool
 	RedisConnection string
@@ -39,6 +40,7 @@ func (c *Config) Load() {
 	c.Address = getEnv("GATEWAY_ADDRESS", ":80")
 	c.Compress = getEnv("GATEWAY_COMPRESS", "true") == "true"
 	c.DebugHttp = getEnv("DEBUG_HTTP", "") == "true"
+	c.TraceCaptureBody = getEnv("TRACE_CAPTURE_BODY", "true") == "true"
 	c.CaptchaSecret = getEnv("CAPTCHA_SECRET", "")
 
 	c.ApiUrl = getEnv("API_URL", "")
