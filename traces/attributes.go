@@ -104,10 +104,9 @@ func SanitizeJSONBody(contentType, body []byte) string {
 		return "(omitted: body is not valid JSON)"
 	}
 
-	redacted, err := json.Marshal(redactJSONValue(parsed))
-	if err != nil {
-		return "(omitted: failed to re-marshal redacted body)"
-	}
+	// json.Unmarshal into `any` only ever yields nil/bool/float64/string/[]any/map[string]any,
+	// all of which json.Marshal always serializes without error, so no error path here.
+	redacted, _ := json.Marshal(redactJSONValue(parsed))
 
 	if len(redacted) > bodyCaptureMaxSize {
 		return string(redacted[:bodyCaptureMaxSize]) + bodyTruncatedNote
