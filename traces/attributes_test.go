@@ -232,6 +232,40 @@ func TestSanitizeJSONBody(t *testing.T) {
 	}
 }
 
+func TestRequestBodyAttribute(t *testing.T) {
+	req := &fasthttp.Request{}
+	req.Header.SetContentType("application/json")
+	req.SetBody([]byte(`{"email":"user@example.com","password":"hunter2"}`))
+
+	attr := RequestBodyAttribute(req)
+
+	if string(attr.Key) != "http.request.body" {
+		t.Errorf("expected key %q, got %q", "http.request.body", attr.Key)
+	}
+
+	expected := `{"email":"user@example.com","password":"***"}`
+	if attr.Value.AsString() != expected {
+		t.Errorf("expected %q, got %q", expected, attr.Value.AsString())
+	}
+}
+
+func TestResponseBodyAttribute(t *testing.T) {
+	resp := &fasthttp.Response{}
+	resp.Header.SetContentType("application/json")
+	resp.SetBody([]byte(`{"accessToken":"abc123","ok":true}`))
+
+	attr := ResponseBodyAttribute(resp)
+
+	if string(attr.Key) != "http.response.body" {
+		t.Errorf("expected key %q, got %q", "http.response.body", attr.Key)
+	}
+
+	expected := `{"accessToken":"***","ok":true}`
+	if attr.Value.AsString() != expected {
+		t.Errorf("expected %q, got %q", expected, attr.Value.AsString())
+	}
+}
+
 func TestSanitizeJSONBodyTruncatesOversizedBody(t *testing.T) {
 	large, err := json.Marshal(map[string]string{"data": strings.Repeat("x", 10000)})
 	if err != nil {

@@ -515,3 +515,63 @@ func TestForwardResponseWithoutOriginSkipsCorsHeaders(t *testing.T) {
 	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlAllowCredentials))
 	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlExposeHeaders))
 }
+
+func TestRequestBodyAttributesDisabled(t *testing.T) {
+	orig := config.Global.TraceCaptureBody
+	config.Global.TraceCaptureBody = false
+	defer func() { config.Global.TraceCaptureBody = orig }()
+
+	req := &fasthttp.Request{}
+	req.Header.SetContentType("application/json")
+	req.SetBodyString(`{"password":"secret"}`)
+
+	attrs := requestBodyAttributes(req)
+
+	assert.Nil(t, attrs)
+}
+
+func TestRequestBodyAttributesEnabled(t *testing.T) {
+	orig := config.Global.TraceCaptureBody
+	config.Global.TraceCaptureBody = true
+	defer func() { config.Global.TraceCaptureBody = orig }()
+
+	req := &fasthttp.Request{}
+	req.Header.SetContentType("application/json")
+	req.SetBodyString(`{"password":"secret"}`)
+
+	attrs := requestBodyAttributes(req)
+
+	assert.Len(t, attrs, 1)
+	assert.Equal(t, "http.request.body", string(attrs[0].Key))
+	assert.Equal(t, `{"password":"***"}`, attrs[0].Value.AsString())
+}
+
+func TestResponseBodyAttributesDisabled(t *testing.T) {
+	orig := config.Global.TraceCaptureBody
+	config.Global.TraceCaptureBody = false
+	defer func() { config.Global.TraceCaptureBody = orig }()
+
+	resp := &fasthttp.Response{}
+	resp.Header.SetContentType("application/json")
+	resp.SetBodyString(`{"accessToken":"abc"}`)
+
+	attrs := responseBodyAttributes(resp)
+
+	assert.Nil(t, attrs)
+}
+
+func TestResponseBodyAttributesEnabled(t *testing.T) {
+	orig := config.Global.TraceCaptureBody
+	config.Global.TraceCaptureBody = true
+	defer func() { config.Global.TraceCaptureBody = orig }()
+
+	resp := &fasthttp.Response{}
+	resp.Header.SetContentType("application/json")
+	resp.SetBodyString(`{"accessToken":"abc"}`)
+
+	attrs := responseBodyAttributes(resp)
+
+	assert.Len(t, attrs, 1)
+	assert.Equal(t, "http.response.body", string(attrs[0].Key))
+	assert.Equal(t, `{"accessToken":"***"}`, attrs[0].Value.AsString())
+}
