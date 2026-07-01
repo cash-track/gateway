@@ -24,6 +24,9 @@ var (
 		XCtCaptchaChallenge,
 		"*",
 	}
+	CorsExposedHeaders = []string{
+		XCtTraceId,
+	}
 	CorsIgnorePaths = map[string]bool{
 		"/live":  true,
 		"/ready": true,
@@ -71,6 +74,7 @@ func writeCorsAllowedHeaders(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set(AccessControlAllowMethods, strings.Join(CorsAllowedMethods, ","))
 	ctx.Response.Header.Set(AccessControlAllowHeaders, strings.Join(CorsAllowedHeaders, ","))
 	ctx.Response.Header.Set(AccessControlAllowCredentials, "true")
+	ctx.Response.Header.Set(AccessControlExposeHeaders, strings.Join(CorsExposedHeaders, ","))
 
 	if string(ctx.Request.Header.Method()) == fasthttp.MethodOptions {
 		ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)

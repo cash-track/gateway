@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -491,6 +492,7 @@ func TestForwardResponse(t *testing.T) {
 
 	assert.Equal(t, "test.com", string(ctx.Response.Header.Peek(headers.AccessControlAllowOrigin)))
 	assert.Equal(t, "true", string(ctx.Response.Header.Peek(headers.AccessControlAllowCredentials)))
+	assert.Equal(t, strings.Join(headers.CorsExposedHeaders, ","), string(ctx.Response.Header.Peek(headers.AccessControlExposeHeaders)))
 	assert.Equal(t, "GET,POST", string(ctx.Response.Header.Peek(headers.AccessControlAllowMethods)))
 	assert.Equal(t, "Content-Type,Accept-Language", string(ctx.Response.Header.Peek(headers.AccessControlAllowHeaders)))
 	assert.Equal(t, "3600", string(ctx.Response.Header.Peek(headers.AccessControlMaxAge)))
@@ -499,4 +501,77 @@ func TestForwardResponse(t *testing.T) {
 	assert.Equal(t, "Content-Type,X-Rate-Limit", string(ctx.Response.Header.Peek(headers.Vary)))
 	assert.Equal(t, "123", string(ctx.Response.Header.Peek(headers.XRateLimit)))
 	assert.Equal(t, "2", string(ctx.Response.Header.Peek(headers.XRateLimitRemaining)))
+}
+
+func TestForwardResponseWithoutOriginSkipsCorsHeaders(t *testing.T) {
+	ctx := fasthttp.RequestCtx{}
+
+	resp := fasthttp.Response{}
+	resp.SetStatusCode(fasthttp.StatusOK)
+
+	err := forwardResponse(&ctx, &resp)
+
+	assert.NoError(t, err)
+	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlAllowCredentials))
+	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlExposeHeaders))
+}
+
+func TestRequestBodyAttributesDisabled(t *testing.T) {
+	orig := config.Global.TraceCaptureBody
+	config.Global.TraceCaptureBody = false
+	defer func() { config.Global.TraceCaptureBody = orig }()
+
+	req := &fasthttp.Request{}
+	req.Header.SetContentType("application/json")
+	req.SetBodyString(`{"password":"secret"}`)
+
+	attrs := requestBodyAttributes(req)
+
+	assert.Nil(t, attrs)
+}
+
+func TestRequestBodyAttributesEnabled(t *testing.T) {
+	orig := config.Global.TraceCaptureBody
+	config.Global.TraceCaptureBody = true
+	defer func() { config.Global.TraceCaptureBody = orig }()
+
+	req := &fasthttp.Request{}
+	req.Header.SetContentType("application/json")
+	req.SetBodyString(`{"password":"secret"}`)
+
+	attrs := requestBodyAttributes(req)
+
+	assert.Len(t, attrs, 1)
+	assert.Equal(t, "http.request.body", string(attrs[0].Key))
+	assert.Equal(t, `{"password":"***"}`, attrs[0].Value.AsString())
+}
+
+func TestResponseBodyAttributesDisabled(t *testing.T) {
+	orig := config.Global.TraceCaptureBody
+	config.Global.TraceCaptureBody = false
+	defer func() { config.Global.TraceCaptureBody = orig }()
+
+	resp := &fasthttp.Response{}
+	resp.Header.SetContentType("application/json")
+	resp.SetBodyString(`{"accessToken":"abc"}`)
+
+	attrs := responseBodyAttributes(resp)
+
+	assert.Nil(t, attrs)
+}
+
+func TestResponseBodyAttributesEnabled(t *testing.T) {
+	orig := config.Global.TraceCaptureBody
+	config.Global.TraceCaptureBody = true
+	defer func() { config.Global.TraceCaptureBody = orig }()
+
+	resp := &fasthttp.Response{}
+	resp.Header.SetContentType("application/json")
+	resp.SetBodyString(`{"accessToken":"abc"}`)
+
+	attrs := responseBodyAttributes(resp)
+
+	assert.Len(t, attrs, 1)
+	assert.Equal(t, "http.response.body", string(attrs[0].Key))
+	assert.Equal(t, `{"accessToken":"***"}`, attrs[0].Value.AsString())
 }
