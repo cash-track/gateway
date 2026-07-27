@@ -163,6 +163,18 @@ paths:
               $ref: "#/components/headers/GatewaySha"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "500":
+          description: |
+            The gateway could not issue a new token (Redis unreachable or write failure).
+            The response has no body. The previous `cshtrkcsrf` cookie is left untouched, so
+            retrying is safe.
+          headers:
+            X-Ct-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+            X-Ct-Gateway-Version:
+              $ref: "#/components/headers/GatewayVersion"
+            X-Ct-Gateway-Sha:
+              $ref: "#/components/headers/GatewaySha"
 
   # ===========================================================================
   # AUTH — gateway-handled flows
@@ -618,13 +630,27 @@ paths:
       summary: CORS preflight
       description: |
         Handles CORS preflight requests. CSRF validation is bypassed for OPTIONS.
-        The gateway responds with the appropriate `Access-Control-*` headers based on
-        the `CORS_ALLOWED_ORIGINS` configuration.
+
+        The gateway does **not** answer the preflight by itself: `OPTIONS` is an allowed proxy
+        method, so the request is forwarded to the backend API first and the backend's response
+        is what the client receives. The CORS layer then runs afterwards and, **only if the
+        `Origin` is in `CORS_ALLOWED_ORIGINS`**, adds the `Access-Control-*` headers and
+        overwrites the status with `200` — whatever the backend actually returned.
+
+        The practical consequences:
+
+        - Allowed origin → always `200`, regardless of the backend's status. The backend's
+          response headers (including `X-Ct-Api-Version` / `X-Ct-Api-Sha`) are still relayed.
+        - Disallowed or missing origin → no `Access-Control-*` headers and no status override,
+          so the backend's status and body pass through unchanged.
+        - Backend unreachable → `502`, before the CORS layer has anything to overwrite.
       tags: [Proxy]
       security: []
       responses:
         "200":
-          description: Preflight accepted
+          description: |
+            Preflight accepted. Note this status is imposed by the CORS layer for an allowed
+            origin and does not imply the backend returned `200`.
           headers:
             Access-Control-Allow-Origin:
               schema:
@@ -645,6 +671,12 @@ paths:
               $ref: "#/components/headers/GatewayVersion"
             X-Ct-Gateway-Sha:
               $ref: "#/components/headers/GatewaySha"
+            X-Ct-Api-Version:
+              $ref: "#/components/headers/ApiVersion"
+            X-Ct-Api-Sha:
+              $ref: "#/components/headers/ApiSha"
+        "502":
+          $ref: "#/components/responses/BadGateway"
 
 # =============================================================================
 # COMPONENTS
@@ -992,13 +1024,47 @@ components:
 
     InternalError:
       description: |
-        Gateway internal error — either an unexpected captcha service response or a gateway-side
-        failure before the request was forwarded.
+        HTTP 500. Three distinct origins share this status. Use the `X-Ct-Api-*` headers to
+        tell them apart: they are set by the backend and only ever relayed by the gateway, so
+        their presence means the request reached the API.
+
+        1. **Relayed from the backend API.** The gateway forwards the upstream status, body and
+           headers verbatim, exactly as it does for `400`/`403`/`404`/`422`/`429`. On the proxy
+           routes this is the common case. `X-Ct-Api-Version` / `X-Ct-Api-Sha` are **present**
+           (unless the backend image predates them).
+        2. **Captcha service failure**, on the captcha-gated auth routes only. The gateway could
+           not get a usable answer from reCAPTCHA and rejected the request before forwarding.
+           No `X-Ct-Api-*` headers.
+        3. **CSRF token rotation failure**, on authenticated `POST`/`PUT`/`PATCH`/`DELETE`.
+           Rotation runs *after* the backend has already replied, so the gateway overwrites the
+           status with `500` while leaving the backend's body and headers in place. The body
+           will therefore look like a success payload and `X-Ct-Api-*` headers **are** present.
+           The request itself was applied by the backend — only the new CSRF token was lost, and
+           the client recovers with `GET /csrf`.
+
+        A gateway failure to *reach* the backend is reported as `502` (see `BadGateway`), never
+        as `500`.
       headers:
+        X-Ct-Trace-Id:
+          $ref: "#/components/headers/TraceId"
         X-Ct-Gateway-Version:
           $ref: "#/components/headers/GatewayVersion"
         X-Ct-Gateway-Sha:
           $ref: "#/components/headers/GatewaySha"
+        X-Ct-Api-Version:
+          description: |
+            Present when the response originated from the backend (origins 1 and 3 above),
+            absent on a captcha failure (origin 2). See `#/components/headers/ApiVersion`.
+          schema:
+            type: string
+            example: "v3.1.0"
+        X-Ct-Api-Sha:
+          description: |
+            Present when the response originated from the backend (origins 1 and 3 above),
+            absent on a captcha failure (origin 2). See `#/components/headers/ApiSha`.
+          schema:
+            type: string
+            example: "9f8e7d6c5b4a"
       content:
         application/json:
           schema:
