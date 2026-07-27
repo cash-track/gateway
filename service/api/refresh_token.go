@@ -32,6 +32,7 @@ func (s *HttpService) refreshToken(
 	req.Header.SetContentTypeBytes(headers.ContentTypeJson)
 	req.Header.SetBytesV(headers.Accept, headers.ContentTypeJson)
 	headers.WriteBearerToken(req, auth.RefreshToken)
+	headers.WriteGatewayVersion(&req.Header, s.config.GitTag, s.config.GitSha)
 
 	data, _ := json.Marshal(cookie.Auth{AccessToken: auth.AccessToken})
 	req.SetBody(data)

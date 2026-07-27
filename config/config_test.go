@@ -18,6 +18,8 @@ func TestConfigLoad(t *testing.T) {
 	_ = os.Setenv("CORS_ALLOWED_ORIGINS", "https://My.dev.cash-track.app:3001,https://Dev.cash-track.app:3000")
 	_ = os.Setenv("CSRF_ENABLED", "true")
 	_ = os.Setenv("REDIS_CONNECTION", "redis:1234")
+	_ = os.Setenv("GIT_TAG", "v1.2.3")
+	_ = os.Setenv("GIT_COMMIT", "abc123def456")
 
 	config := &Config{}
 	config.Load()
@@ -49,6 +51,22 @@ func TestConfigLoad(t *testing.T) {
 
 	assert.Equal(t, true, config.CsrfEnabled)
 	assert.Equal(t, "redis:1234", config.RedisConnection)
+
+	assert.Equal(t, "v1.2.3", config.GitTag)
+	assert.Equal(t, "abc123def456", config.GitSha)
+}
+
+func TestConfigLoadGitInfoDefaultsEmpty(t *testing.T) {
+	_ = os.Setenv("API_URL", "http://api:80")
+	t.Setenv("GIT_TAG", "")
+	t.Setenv("GIT_COMMIT", "")
+
+	config := &Config{}
+	config.Load()
+
+	// No default is fabricated when GIT_TAG/GIT_COMMIT are unset (e.g. local `make run`).
+	assert.Equal(t, "", config.GitTag)
+	assert.Equal(t, "", config.GitSha)
 }
 
 func TestConfigLoadUnexpectedApiUrl(t *testing.T) {

@@ -40,6 +40,8 @@ func TestRefreshTokenOk(t *testing.T) {
 		assert.Equal(t, string(headers.ContentTypeJson), string(req.Header.Peek(headers.Accept)))
 		assert.Equal(t, fmt.Sprintf("Bearer %s", oldRefreshToken), string(req.Header.Peek(headers.Authorization)))
 		assert.Equal(t, fmt.Sprintf(`{"accessToken":"%s"}`, oldAccessToken), string(req.Body()))
+		assert.Empty(t, req.Header.Peek(headers.XCtGatewayVersion))
+		assert.Empty(t, req.Header.Peek(headers.XCtGatewaySha))
 
 		return nil
 	})
@@ -60,6 +62,37 @@ func TestRefreshTokenOk(t *testing.T) {
 	assert.NotEmpty(t, newAuth)
 	assert.Equal(t, newAccessToken, newAuth.AccessToken)
 	assert.Equal(t, newRefreshToken, newAuth.RefreshToken)
+}
+
+func TestRefreshTokenSetsGatewayVersionHeaders(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+
+		assert.Equal(t, "v1.2.3", string(req.Header.Peek(headers.XCtGatewayVersion)))
+		assert.Equal(t, "abc123", string(req.Header.Peek(headers.XCtGatewaySha)))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+		GitTag: "v1.2.3",
+		GitSha: "abc123",
+	}, nil)
+
+	auth := cookie.Auth{RefreshToken: "refresh_token", AccessToken: "access_token"}
+
+	newAuth, err := s.refreshToken(auth, context.TODO(), &fasthttp.RequestCtx{})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "new_access_token", newAuth.AccessToken)
 }
 
 func TestRefreshTokenFail(t *testing.T) {

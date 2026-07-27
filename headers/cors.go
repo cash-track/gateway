@@ -26,6 +26,10 @@ var (
 	}
 	CorsExposedHeaders = []string{
 		XCtTraceId,
+		XCtGatewayVersion,
+		XCtGatewaySha,
+		XCtApiVersion,
+		XCtApiSha,
 	}
 	CorsIgnorePaths = map[string]bool{
 		"/live":  true,

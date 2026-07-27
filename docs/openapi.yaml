@@ -84,6 +84,11 @@ paths:
       responses:
         "200":
           description: Gateway is alive
+          headers:
+            X-Ct-Gateway-Version:
+              $ref: "#/components/headers/GatewayVersion"
+            X-Ct-Gateway-Sha:
+              $ref: "#/components/headers/GatewaySha"
           content:
             text/plain:
               schema:
@@ -103,6 +108,11 @@ paths:
       responses:
         "200":
           description: Gateway and backend are ready
+          headers:
+            X-Ct-Gateway-Version:
+              $ref: "#/components/headers/GatewayVersion"
+            X-Ct-Gateway-Sha:
+              $ref: "#/components/headers/GatewaySha"
           content:
             text/plain:
               schema:
@@ -110,6 +120,11 @@ paths:
                 example: ok
         "500":
           description: Backend is unreachable
+          headers:
+            X-Ct-Gateway-Version:
+              $ref: "#/components/headers/GatewayVersion"
+            X-Ct-Gateway-Sha:
+              $ref: "#/components/headers/GatewaySha"
           content:
             text/plain:
               schema:
@@ -142,6 +157,10 @@ paths:
               description: "`cshtrkcsrf=<uuid-v7>; Path=/; Max-Age=600; Domain=<gateway-domain>`"
               schema:
                 type: string
+            X-Ct-Gateway-Version:
+              $ref: "#/components/headers/GatewayVersion"
+            X-Ct-Gateway-Sha:
+              $ref: "#/components/headers/GatewaySha"
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -177,6 +196,14 @@ paths:
           headers:
             Set-Cookie:
               $ref: "#/components/headers/AuthCookies"
+            X-Ct-Gateway-Version:
+              $ref: "#/components/headers/GatewayVersion"
+            X-Ct-Gateway-Sha:
+              $ref: "#/components/headers/GatewaySha"
+            X-Ct-Api-Version:
+              $ref: "#/components/headers/ApiVersion"
+            X-Ct-Api-Sha:
+              $ref: "#/components/headers/ApiSha"
           content:
             application/json:
               schema:
@@ -217,6 +244,14 @@ paths:
           headers:
             Set-Cookie:
               $ref: "#/components/headers/AuthCookies"
+            X-Ct-Gateway-Version:
+              $ref: "#/components/headers/GatewayVersion"
+            X-Ct-Gateway-Sha:
+              $ref: "#/components/headers/GatewaySha"
+            X-Ct-Api-Version:
+              $ref: "#/components/headers/ApiVersion"
+            X-Ct-Api-Sha:
+              $ref: "#/components/headers/ApiSha"
           content:
             application/json:
               schema:
@@ -258,6 +293,14 @@ paths:
           headers:
             Set-Cookie:
               $ref: "#/components/headers/AuthCookies"
+            X-Ct-Gateway-Version:
+              $ref: "#/components/headers/GatewayVersion"
+            X-Ct-Gateway-Sha:
+              $ref: "#/components/headers/GatewaySha"
+            X-Ct-Api-Version:
+              $ref: "#/components/headers/ApiVersion"
+            X-Ct-Api-Sha:
+              $ref: "#/components/headers/ApiSha"
           content:
             application/json:
               schema:
@@ -292,6 +335,14 @@ paths:
           headers:
             Set-Cookie:
               $ref: "#/components/headers/AuthCookies"
+            X-Ct-Gateway-Version:
+              $ref: "#/components/headers/GatewayVersion"
+            X-Ct-Gateway-Sha:
+              $ref: "#/components/headers/GatewaySha"
+            X-Ct-Api-Version:
+              $ref: "#/components/headers/ApiVersion"
+            X-Ct-Api-Sha:
+              $ref: "#/components/headers/ApiSha"
           content:
             application/json:
               schema:
@@ -318,6 +369,15 @@ paths:
       responses:
         "200":
           description: WebAuthn challenge options (forwarded from backend)
+          headers:
+            X-Ct-Gateway-Version:
+              $ref: "#/components/headers/GatewayVersion"
+            X-Ct-Gateway-Sha:
+              $ref: "#/components/headers/GatewaySha"
+            X-Ct-Api-Version:
+              $ref: "#/components/headers/ApiVersion"
+            X-Ct-Api-Sha:
+              $ref: "#/components/headers/ApiSha"
           content:
             application/json:
               schema:
@@ -359,6 +419,14 @@ paths:
                 `cshtrkr=; Expires=Thu, 01 Jan 1970 00:00:00 GMT`
               schema:
                 type: string
+            X-Ct-Gateway-Version:
+              $ref: "#/components/headers/GatewayVersion"
+            X-Ct-Gateway-Sha:
+              $ref: "#/components/headers/GatewaySha"
+            X-Ct-Api-Version:
+              $ref: "#/components/headers/ApiVersion"
+            X-Ct-Api-Sha:
+              $ref: "#/components/headers/ApiSha"
           content:
             application/json:
               schema:
@@ -573,6 +641,10 @@ paths:
               schema:
                 type: string
                 example: "true"
+            X-Ct-Gateway-Version:
+              $ref: "#/components/headers/GatewayVersion"
+            X-Ct-Gateway-Sha:
+              $ref: "#/components/headers/GatewaySha"
 
 # =============================================================================
 # COMPONENTS
@@ -639,6 +711,44 @@ components:
       schema:
         type: string
         example: "4bf92f3577b34da6a3ce929d0e0e4736"
+
+    GatewayVersion:
+      description: |
+        Git tag the running gateway binary was built from (`GIT_TAG` build arg). Present on
+        every response the gateway returns. Omitted entirely when the gateway was built without
+        a tag (e.g. a local `make run` build).
+      schema:
+        type: string
+        example: "v1.4.2"
+
+    GatewaySha:
+      description: |
+        Git commit SHA the running gateway binary was built from (`GIT_COMMIT` build arg).
+        Present on every response the gateway returns. Omitted entirely when the gateway was
+        built without a commit SHA (e.g. a local `make run` build).
+      schema:
+        type: string
+        example: "a1b2c3d4e5f6"
+
+    ApiVersion:
+      description: |
+        Git tag the backend PHP API image was built from. Set by the backend, not the gateway —
+        the gateway only relays it unchanged on responses that actually reached the API. Absent
+        when no backend call occurred (e.g. a captcha rejection, a CSRF rejection, or a gateway
+        connectivity failure) and absent when the API image predates this header.
+      schema:
+        type: string
+        example: "v3.1.0"
+
+    ApiSha:
+      description: |
+        Git commit SHA the backend PHP API image was built from. Set by the backend, not the
+        gateway — the gateway only relays it unchanged on responses that actually reached the
+        API. Absent when no backend call occurred (e.g. a captcha rejection, a CSRF rejection,
+        or a gateway connectivity failure) and absent when the API image predates this header.
+      schema:
+        type: string
+        example: "9f8e7d6c5b4a"
 
   # ---------------------------------------------------------------------------
   # SCHEMAS
@@ -749,6 +859,14 @@ components:
       headers:
         X-Ct-Trace-Id:
           $ref: "#/components/headers/TraceId"
+        X-Ct-Gateway-Version:
+          $ref: "#/components/headers/GatewayVersion"
+        X-Ct-Gateway-Sha:
+          $ref: "#/components/headers/GatewaySha"
+        X-Ct-Api-Version:
+          $ref: "#/components/headers/ApiVersion"
+        X-Ct-Api-Sha:
+          $ref: "#/components/headers/ApiSha"
         Access-Control-Allow-Origin:
           schema:
             type: string
@@ -768,6 +886,21 @@ components:
         Not authenticated. Either the `cshtrka` cookie is missing/expired and the automatic
         token refresh also failed (or no refresh token was present), or CSRF validation failed
         with a missing user context.
+
+        This response is shared by two different call sites: on `/api/*` proxy routes it is
+        the backend's own `401` relayed unchanged (so `X-Ct-Api-Version`/`X-Ct-Api-Sha` are
+        present when the API sent them); on `GET /csrf` it is a local cookie check the gateway
+        performs itself without contacting the backend (so those two headers are always absent
+        there).
+      headers:
+        X-Ct-Gateway-Version:
+          $ref: "#/components/headers/GatewayVersion"
+        X-Ct-Gateway-Sha:
+          $ref: "#/components/headers/GatewaySha"
+        X-Ct-Api-Version:
+          $ref: "#/components/headers/ApiVersion"
+        X-Ct-Api-Sha:
+          $ref: "#/components/headers/ApiSha"
       content:
         application/json:
           schema:
@@ -780,6 +913,11 @@ components:
       description: |
         Google reCAPTCHA v3 validation failed. The client should refresh the captcha token
         and retry the request.
+      headers:
+        X-Ct-Gateway-Version:
+          $ref: "#/components/headers/GatewayVersion"
+        X-Ct-Gateway-Sha:
+          $ref: "#/components/headers/GatewaySha"
       content:
         application/json:
           schema:
@@ -793,6 +931,11 @@ components:
         CSRF token validation failed (HTTP 417 Expectation Failed). The `cshtrkcsrf` cookie
         is missing, expired, or does not match the Redis-stored token. Call `GET /csrf` to
         obtain a fresh token.
+      headers:
+        X-Ct-Gateway-Version:
+          $ref: "#/components/headers/GatewayVersion"
+        X-Ct-Gateway-Sha:
+          $ref: "#/components/headers/GatewaySha"
       content:
         application/json:
           schema:
@@ -806,6 +949,14 @@ components:
       headers:
         X-Ct-Trace-Id:
           $ref: "#/components/headers/TraceId"
+        X-Ct-Gateway-Version:
+          $ref: "#/components/headers/GatewayVersion"
+        X-Ct-Gateway-Sha:
+          $ref: "#/components/headers/GatewaySha"
+        X-Ct-Api-Version:
+          $ref: "#/components/headers/ApiVersion"
+        X-Ct-Api-Sha:
+          $ref: "#/components/headers/ApiSha"
         Retry-After:
           description: Present on 429 responses
           schema:
@@ -826,6 +977,14 @@ components:
       headers:
         X-Ct-Trace-Id:
           $ref: "#/components/headers/TraceId"
+        X-Ct-Gateway-Version:
+          $ref: "#/components/headers/GatewayVersion"
+        X-Ct-Gateway-Sha:
+          $ref: "#/components/headers/GatewaySha"
+        X-Ct-Api-Version:
+          $ref: "#/components/headers/ApiVersion"
+        X-Ct-Api-Sha:
+          $ref: "#/components/headers/ApiSha"
       content:
         application/json:
           schema:
@@ -835,6 +994,11 @@ components:
       description: |
         Gateway internal error — either an unexpected captcha service response or a gateway-side
         failure before the request was forwarded.
+      headers:
+        X-Ct-Gateway-Version:
+          $ref: "#/components/headers/GatewayVersion"
+        X-Ct-Gateway-Sha:
+          $ref: "#/components/headers/GatewaySha"
       content:
         application/json:
           schema:
@@ -847,6 +1011,11 @@ components:
       description: |
         The backend API returned an unexpected status or was unreachable. The gateway
         returns `502` when it cannot process the backend response.
+      headers:
+        X-Ct-Gateway-Version:
+          $ref: "#/components/headers/GatewayVersion"
+        X-Ct-Gateway-Sha:
+          $ref: "#/components/headers/GatewaySha"
       content:
         application/json:
           schema:

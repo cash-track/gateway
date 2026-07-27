@@ -32,6 +32,9 @@ type Config struct {
 
 	CsrfEnabled     bool
 	RedisConnection string
+
+	GitTag string
+	GitSha string
 }
 
 var Global Config
@@ -65,6 +68,9 @@ func (c *Config) Load() {
 
 	c.CsrfEnabled = getEnv("CSRF_ENABLED", "") == "true"
 	c.RedisConnection = getEnv("REDIS_CONNECTION", "localhost:6379")
+
+	c.GitTag = getEnv("GIT_TAG", "")
+	c.GitSha = getEnv("GIT_COMMIT", "")
 }
 
 func getEnv(key, def string) string {
