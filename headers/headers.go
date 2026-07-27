@@ -26,7 +26,11 @@ const (
 	RetryAfter                    = "Retry-After"
 	UserAgent                     = "User-Agent"
 	Vary                          = "Vary"
+	XCtApiSha                     = "X-Ct-Api-Sha"
+	XCtApiVersion                 = "X-Ct-Api-Version"
 	XCtCaptchaChallenge           = "X-Ct-Captcha-Challenge"
+	XCtGatewaySha                 = "X-Ct-Gateway-Sha"
+	XCtGatewayVersion             = "X-Ct-Gateway-Version"
 	XCtTraceId                    = "X-Ct-Trace-Id"
 	XForwardedFor                 = "X-Forwarded-For"
 	XRateLimit                    = "X-Ratelimit-Limit"
@@ -48,6 +52,8 @@ var (
 		strings.ToLower(Referer):             true,
 		strings.ToLower(RetryAfter):          true,
 		strings.ToLower(UserAgent):           true,
+		strings.ToLower(XCtApiSha):           true,
+		strings.ToLower(XCtApiVersion):       true,
 		strings.ToLower(XCtCaptchaChallenge): true,
 		strings.ToLower(XCtTraceId):          true,
 		strings.ToLower(XRateLimit):          true,

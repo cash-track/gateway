@@ -30,6 +30,8 @@ func TestHealthcheckOk(t *testing.T) {
 		assert.Equal(t, fmt.Sprintf("%s%s", endpoint, healthcheckURI), req.URI().String())
 		assert.Equal(t, string(headers.ContentTypeJson), string(req.Header.ContentType()))
 		assert.Equal(t, string(headers.ContentTypeJson), string(req.Header.Peek(headers.Accept)))
+		assert.Empty(t, req.Header.Peek(headers.XCtGatewayVersion))
+		assert.Empty(t, req.Header.Peek(headers.XCtGatewaySha))
 
 		return nil
 	})
@@ -37,6 +39,32 @@ func TestHealthcheckOk(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
+	}, nil)
+	err := s.Healthcheck()
+
+	assert.NoError(t, err)
+}
+
+func TestHealthcheckSetsGatewayVersionHeaders(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+
+		assert.Equal(t, "v1.2.3", string(req.Header.Peek(headers.XCtGatewayVersion)))
+		assert.Equal(t, "abc123", string(req.Header.Peek(headers.XCtGatewaySha)))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+		GitTag: "v1.2.3",
+		GitSha: "abc123",
 	}, nil)
 	err := s.Healthcheck()
 

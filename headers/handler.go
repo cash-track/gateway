@@ -3,6 +3,7 @@ package headers
 import (
 	"github.com/valyala/fasthttp"
 
+	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/traces"
 )
 
@@ -24,5 +25,8 @@ func Handler(h fasthttp.RequestHandler) fasthttp.RequestHandler {
 		if traceId := traces.FindTraceId(ctx); traceId != "" {
 			ctx.Response.Header.Set(XCtTraceId, traceId)
 		}
+
+		// propagate gateway build provenance to every response
+		WriteGatewayVersion(&ctx.Response.Header, config.Global.GitTag, config.Global.GitSha)
 	}
 }

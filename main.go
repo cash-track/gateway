@@ -51,18 +51,7 @@ func main() {
 		),
 		csrf,
 	)
-	h := prom.NewPrometheus("http").WrapHandler(r.Router)
-	h = headers.Handler(h)
-	if config.Global.CsrfEnabled {
-		h = csrf.Handler(h)
-	}
-	h = headers.CorsHandler(h)
-	h = logger.DebugHandler(h)
-	h = traces.TraceHandler(h)
-
-	if config.Global.Compress {
-		h = fasthttp.CompressHandler(h)
-	}
+	h := buildHandler(prom.NewPrometheus("http").WrapHandler(r.Router), csrf)
 
 	s := &fasthttp.Server{
 		Handler:         h,
@@ -75,6 +64,29 @@ func main() {
 	} else {
 		start(s)
 	}
+}
+
+// buildHandler chains the middleware applied to every request, outermost first:
+// traces -> logger -> cors -> headers -> csrf (if enabled) -> inner.
+//
+// headers must wrap csrf, not the reverse: csrf short-circuits a validation failure with a
+// 417 without calling its inner handler, which would leave that response with no trace ID
+// and no provenance headers.
+func buildHandler(inner fasthttp.RequestHandler, csrf csrfHandler.Handler) fasthttp.RequestHandler {
+	h := inner
+	if config.Global.CsrfEnabled {
+		h = csrf.Handler(h)
+	}
+	h = headers.Handler(h)
+	h = headers.CorsHandler(h)
+	h = logger.DebugHandler(h)
+	h = traces.TraceHandler(h)
+
+	if config.Global.Compress {
+		h = fasthttp.CompressHandler(h)
+	}
+
+	return h
 }
 
 func start(s *fasthttp.Server) {

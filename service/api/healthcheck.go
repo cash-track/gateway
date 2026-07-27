@@ -21,6 +21,7 @@ func (s *HttpService) Healthcheck() error {
 	s.setRequestURI(req.URI(), healthcheckURI)
 	req.Header.SetContentTypeBytes(headers.ContentTypeJson)
 	req.Header.SetBytesV(headers.Accept, headers.ContentTypeJson)
+	headers.WriteGatewayVersion(&req.Header, s.config.GitTag, s.config.GitSha)
 
 	logger.DebugRequest(req, ServiceId)
 

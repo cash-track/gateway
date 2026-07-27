@@ -33,6 +33,9 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 	req.Header.SetBytesV(headers.Accept, headers.ContentTypeJson)
 	req.Header.Set(headers.XForwardedFor, remoteIp)
 
+	// set once: the refreshed-token retry below reuses this same req
+	headers.WriteGatewayVersion(&req.Header, s.config.GitTag, s.config.GitSha)
+
 	headers.CopyFromRequest(ctx, req, []string{
 		headers.AcceptLanguage,
 		headers.AccessControlRequestHeaders,
@@ -177,6 +180,8 @@ func forwardResponse(ctx *fasthttp.RequestCtx, resp *fasthttp.Response) error {
 		headers.ContentType,
 		headers.RetryAfter,
 		headers.Vary,
+		headers.XCtApiSha,
+		headers.XCtApiVersion,
 		headers.XRateLimit,
 		headers.XRateLimitRemaining,
 	})

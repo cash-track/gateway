@@ -88,6 +88,117 @@ func TestForwardRequestWithBodyOverride(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestForwardRequestSetsGatewayVersionHeaders(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+
+		assert.Equal(t, "v1.2.3", string(req.Header.Peek(headers.XCtGatewayVersion)))
+		assert.Equal(t, "abc123", string(req.Header.Peek(headers.XCtGatewaySha)))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+		GitTag: "v1.2.3",
+		GitSha: "abc123",
+	}, nil)
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+}
+
+func TestForwardRequestOmitsGatewayVersionHeadersWhenEmpty(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+
+		assert.Empty(t, req.Header.Peek(headers.XCtGatewayVersion))
+		assert.Empty(t, req.Header.Peek(headers.XCtGatewaySha))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, nil)
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+}
+
+// All three outbound requests of a 401-refresh-retry cycle must carry the headers.
+func TestForwardRequestGatewayVersionHeadersPersistAcrossRefreshRetry(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	// 1st: original forwarded request, gets 401
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusUnauthorized)
+
+		assert.Equal(t, "v1.2.3", string(req.Header.Peek(headers.XCtGatewayVersion)))
+		assert.Equal(t, "abc123", string(req.Header.Peek(headers.XCtGatewaySha)))
+
+		return nil
+	})
+	// 2nd: refresh request, built with its own req in refresh_token.go
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+
+		assert.Equal(t, "v1.2.3", string(req.Header.Peek(headers.XCtGatewayVersion)))
+		assert.Equal(t, "abc123", string(req.Header.Peek(headers.XCtGatewaySha)))
+
+		return nil
+	})
+	// 3rd: retry, reusing the same req as the 1st
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+
+		assert.Equal(t, "v1.2.3", string(req.Header.Peek(headers.XCtGatewayVersion)))
+		assert.Equal(t, "abc123", string(req.Header.Peek(headers.XCtGatewaySha)))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+		GitTag: "v1.2.3",
+		GitSha: "abc123",
+	}, nil)
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+	ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, "access_token")
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token")
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+}
+
 func TestForwardRequestWithAuthRefresh(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	h := mocks.NewHttpRetryClientMock(ctrl)
@@ -483,6 +594,8 @@ func TestForwardResponse(t *testing.T) {
 	resp.Header.Set(headers.ContentType, "text/plain")
 	resp.Header.Set(headers.RetryAfter, "200")
 	resp.Header.Set(headers.Vary, "Content-Type,X-Rate-Limit")
+	resp.Header.Set(headers.XCtApiVersion, "v9.9.9")
+	resp.Header.Set(headers.XCtApiSha, "deadbeef")
 	resp.Header.Set(headers.XRateLimit, "123")
 	resp.Header.Set(headers.XRateLimitRemaining, "2")
 
@@ -499,6 +612,8 @@ func TestForwardResponse(t *testing.T) {
 	assert.Equal(t, "text/plain", string(ctx.Response.Header.Peek(headers.ContentType)))
 	assert.Equal(t, "200", string(ctx.Response.Header.Peek(headers.RetryAfter)))
 	assert.Equal(t, "Content-Type,X-Rate-Limit", string(ctx.Response.Header.Peek(headers.Vary)))
+	assert.Equal(t, "v9.9.9", string(ctx.Response.Header.Peek(headers.XCtApiVersion)))
+	assert.Equal(t, "deadbeef", string(ctx.Response.Header.Peek(headers.XCtApiSha)))
 	assert.Equal(t, "123", string(ctx.Response.Header.Peek(headers.XRateLimit)))
 	assert.Equal(t, "2", string(ctx.Response.Header.Peek(headers.XRateLimitRemaining)))
 }
@@ -514,6 +629,22 @@ func TestForwardResponseWithoutOriginSkipsCorsHeaders(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlAllowCredentials))
 	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlExposeHeaders))
+}
+
+// The API headers are relayed from upstream only — an API that omits them (older image,
+// or no response at all) must not have them fabricated by the gateway.
+func TestForwardResponseDoesNotSynthesizeApiVersionHeaders(t *testing.T) {
+	ctx := fasthttp.RequestCtx{}
+
+	resp := fasthttp.Response{}
+	resp.SetStatusCode(fasthttp.StatusOK)
+	// deliberately not set: headers.XCtApiVersion, headers.XCtApiSha
+
+	err := forwardResponse(&ctx, &resp)
+
+	assert.NoError(t, err)
+	assert.Empty(t, ctx.Response.Header.Peek(headers.XCtApiVersion))
+	assert.Empty(t, ctx.Response.Header.Peek(headers.XCtApiSha))
 }
 
 func TestRequestBodyAttributesDisabled(t *testing.T) {
