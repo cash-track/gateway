@@ -1,6 +1,8 @@
 package headers
 
 import (
+	"net"
+	"net/netip"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,7 +12,12 @@ import (
 )
 
 func TestHandler(t *testing.T) {
+	original := config.Global.TrustedProxies
+	t.Cleanup(func() { config.Global.TrustedProxies = original })
+	config.Global.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}
+
 	ctx := fasthttp.RequestCtx{}
+	ctx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("127.0.0.1")})
 	ctx.Request.Header.Set(CfConnectingIP, "192.168.1.2")
 
 	h := Handler(func(ctx *fasthttp.RequestCtx) {})
@@ -19,6 +26,22 @@ func TestHandler(t *testing.T) {
 	ip := ctx.UserValueBytes(clientIpUserValue).(string)
 	assert.Equal(t, "192.168.1.2", ip)
 	assert.Equal(t, ContentTypeJson, ctx.Response.Header.ContentType())
+}
+
+func TestHandlerUntrustedPeerIgnoresHeader(t *testing.T) {
+	original := config.Global.TrustedProxies
+	t.Cleanup(func() { config.Global.TrustedProxies = original })
+	config.Global.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.SetRemoteAddr(&net.TCPAddr{IP: net.ParseIP("203.0.113.10")})
+	ctx.Request.Header.Set(CfConnectingIP, "192.168.1.2")
+
+	h := Handler(func(ctx *fasthttp.RequestCtx) {})
+	h(&ctx)
+
+	ip := ctx.UserValueBytes(clientIpUserValue).(string)
+	assert.Equal(t, "203.0.113.10", ip)
 }
 
 func TestHandlerAddTraceId(t *testing.T) {

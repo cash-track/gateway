@@ -2,10 +2,15 @@ package config
 
 import (
 	"fmt"
+	"log"
+	"net/netip"
 	"net/url"
 	"os"
 	"strings"
 )
+
+// RFC1918 + loopback: covers Traefik on a Docker bridge network out of the box.
+const defaultTrustedProxies = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,::1/128"
 
 type Config struct {
 	Address       string
@@ -26,6 +31,9 @@ type Config struct {
 	CookieSecure bool
 
 	CorsAllowedOrigins map[string]bool
+
+	// Peers allowed to set Cf-Connecting-IP (e.g. Traefik).
+	TrustedProxies []netip.Prefix
 
 	DebugHttp        bool
 	TraceCaptureBody bool
@@ -65,6 +73,7 @@ func (c *Config) Load() {
 	c.CookieSecure = getCookieSecure(c.GatewayUrl)
 
 	c.CorsAllowedOrigins = getCorsAllowedOrigins(getEnv("CORS_ALLOWED_ORIGINS", ""))
+	c.TrustedProxies = getTrustedProxies(getEnv("TRUSTED_PROXIES", defaultTrustedProxies))
 
 	c.CsrfEnabled = getEnv("CSRF_ENABLED", "") == "true"
 	c.RedisConnection = getEnv("REDIS_CONNECTION", "localhost:6379")
@@ -109,4 +118,41 @@ func getCorsAllowedOrigins(val string) map[string]bool {
 	}
 
 	return list
+}
+
+// getTrustedProxies parses a comma-separated list of CIDRs and/or bare IPs.
+// Bare IPs are normalised to a /32 or /128 prefix. Invalid entries are logged and skipped.
+func getTrustedProxies(val string) []netip.Prefix {
+	list := make([]netip.Prefix, 0)
+
+	for _, v := range strings.Split(val, ",") {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+
+		prefix, err := parseTrustedProxy(v)
+		if err != nil {
+			log.Printf("Skipping invalid TRUSTED_PROXIES entry %q: %s", v, err)
+
+			continue
+		}
+
+		list = append(list, prefix)
+	}
+
+	return list
+}
+
+func parseTrustedProxy(v string) (netip.Prefix, error) {
+	if prefix, err := netip.ParsePrefix(v); err == nil {
+		return prefix, nil
+	}
+
+	addr, err := netip.ParseAddr(v)
+	if err != nil {
+		return netip.Prefix{}, fmt.Errorf("not a valid CIDR or IP: %w", err)
+	}
+
+	return netip.PrefixFrom(addr, addr.BitLen()), nil
 }
