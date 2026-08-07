@@ -33,6 +33,7 @@ const (
 	XCtGatewayVersion             = "X-Ct-Gateway-Version"
 	XCtTraceId                    = "X-Ct-Trace-Id"
 	XForwardedFor                 = "X-Forwarded-For"
+	XGatewaySecret                = "X-Gateway-Secret"
 	XRateLimit                    = "X-Ratelimit-Limit"
 	XRateLimitRemaining           = "X-Ratelimit-Remaining"
 	XRealIp                       = "X-Real-IP"

@@ -132,3 +132,26 @@ func TestConfigLoadTrustedProxiesAllInvalidYieldsEmptyList(t *testing.T) {
 
 	assert.Empty(t, config.TrustedProxies)
 }
+
+func TestConfigLoadGatewaySecret(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want string
+	}{
+		{name: "unset defaults to empty", env: "", want: ""},
+		{name: "set is loaded verbatim", env: "shared-secret-value", want: "shared-secret-value"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_ = os.Setenv("API_URL", "http://api:80")
+			t.Setenv("GATEWAY_SECRET", tt.env)
+
+			config := &Config{}
+			config.Load()
+
+			assert.Equal(t, tt.want, config.GatewaySecret)
+		})
+	}
+}

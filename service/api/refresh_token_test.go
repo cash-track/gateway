@@ -95,6 +95,35 @@ func TestRefreshTokenSetsGatewayVersionHeaders(t *testing.T) {
 	assert.Equal(t, "new_access_token", newAuth.AccessToken)
 }
 
+func TestRefreshTokenSetsGatewaySecretHeader(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+
+		assert.Equal(t, "shared-secret", string(req.Header.Peek(headers.XGatewaySecret)))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI:        apiUrl,
+		GatewaySecret: "shared-secret",
+	}, nil)
+
+	auth := cookie.Auth{RefreshToken: "refresh_token", AccessToken: "access_token"}
+
+	newAuth, err := s.refreshToken(auth, context.TODO(), &fasthttp.RequestCtx{})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "new_access_token", newAuth.AccessToken)
+}
+
 func TestRefreshTokenFail(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	h := mocks.NewHttpRetryClientMock(ctrl)

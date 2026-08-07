@@ -35,6 +35,7 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 
 	// set once: the refreshed-token retry below reuses this same req
 	headers.WriteGatewayVersion(&req.Header, s.config.GitTag, s.config.GitSha)
+	headers.WriteGatewaySecret(&req.Header, s.config.GatewaySecret)
 
 	headers.CopyFromRequest(ctx, req, []string{
 		headers.AcceptLanguage,

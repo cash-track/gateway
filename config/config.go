@@ -16,6 +16,7 @@ type Config struct {
 	Address       string
 	Compress      bool
 	CaptchaSecret string
+	GatewaySecret string
 
 	GatewayUrl string
 	ApiUrl     string
@@ -53,6 +54,7 @@ func (c *Config) Load() {
 	c.DebugHttp = getEnv("DEBUG_HTTP", "") == "true"
 	c.TraceCaptureBody = getEnv("TRACE_CAPTURE_BODY", "true") == "true"
 	c.CaptchaSecret = getEnv("CAPTCHA_SECRET", "")
+	c.GatewaySecret = getEnv("GATEWAY_SECRET", "")
 
 	c.ApiUrl = getEnv("API_URL", "")
 	if u, err := url.Parse(c.ApiUrl); err != nil {
