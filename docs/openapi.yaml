@@ -161,6 +161,16 @@ paths:
               $ref: "#/components/headers/GatewayVersion"
             X-Ct-Gateway-Sha:
               $ref: "#/components/headers/GatewaySha"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/StrictTransportSecurity"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/XContentTypeOptions"
+            X-Frame-Options:
+              $ref: "#/components/headers/XFrameOptions"
+            Referrer-Policy:
+              $ref: "#/components/headers/ReferrerPolicy"
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "500":
@@ -175,6 +185,16 @@ paths:
               $ref: "#/components/headers/GatewayVersion"
             X-Ct-Gateway-Sha:
               $ref: "#/components/headers/GatewaySha"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/StrictTransportSecurity"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/XContentTypeOptions"
+            X-Frame-Options:
+              $ref: "#/components/headers/XFrameOptions"
+            Referrer-Policy:
+              $ref: "#/components/headers/ReferrerPolicy"
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
 
   # ===========================================================================
   # AUTH — gateway-handled flows
@@ -216,6 +236,16 @@ paths:
               $ref: "#/components/headers/ApiVersion"
             X-Ct-Api-Sha:
               $ref: "#/components/headers/ApiSha"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/StrictTransportSecurity"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/XContentTypeOptions"
+            X-Frame-Options:
+              $ref: "#/components/headers/XFrameOptions"
+            Referrer-Policy:
+              $ref: "#/components/headers/ReferrerPolicy"
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
           content:
             application/json:
               schema:
@@ -264,6 +294,16 @@ paths:
               $ref: "#/components/headers/ApiVersion"
             X-Ct-Api-Sha:
               $ref: "#/components/headers/ApiSha"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/StrictTransportSecurity"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/XContentTypeOptions"
+            X-Frame-Options:
+              $ref: "#/components/headers/XFrameOptions"
+            Referrer-Policy:
+              $ref: "#/components/headers/ReferrerPolicy"
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
           content:
             application/json:
               schema:
@@ -313,6 +353,16 @@ paths:
               $ref: "#/components/headers/ApiVersion"
             X-Ct-Api-Sha:
               $ref: "#/components/headers/ApiSha"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/StrictTransportSecurity"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/XContentTypeOptions"
+            X-Frame-Options:
+              $ref: "#/components/headers/XFrameOptions"
+            Referrer-Policy:
+              $ref: "#/components/headers/ReferrerPolicy"
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
           content:
             application/json:
               schema:
@@ -355,6 +405,16 @@ paths:
               $ref: "#/components/headers/ApiVersion"
             X-Ct-Api-Sha:
               $ref: "#/components/headers/ApiSha"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/StrictTransportSecurity"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/XContentTypeOptions"
+            X-Frame-Options:
+              $ref: "#/components/headers/XFrameOptions"
+            Referrer-Policy:
+              $ref: "#/components/headers/ReferrerPolicy"
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
           content:
             application/json:
               schema:
@@ -390,6 +450,16 @@ paths:
               $ref: "#/components/headers/ApiVersion"
             X-Ct-Api-Sha:
               $ref: "#/components/headers/ApiSha"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/StrictTransportSecurity"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/XContentTypeOptions"
+            X-Frame-Options:
+              $ref: "#/components/headers/XFrameOptions"
+            Referrer-Policy:
+              $ref: "#/components/headers/ReferrerPolicy"
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
           content:
             application/json:
               schema:
@@ -439,6 +509,16 @@ paths:
               $ref: "#/components/headers/ApiVersion"
             X-Ct-Api-Sha:
               $ref: "#/components/headers/ApiSha"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/StrictTransportSecurity"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/XContentTypeOptions"
+            X-Frame-Options:
+              $ref: "#/components/headers/XFrameOptions"
+            Referrer-Policy:
+              $ref: "#/components/headers/ReferrerPolicy"
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
           content:
             application/json:
               schema:
@@ -675,6 +755,16 @@ paths:
               $ref: "#/components/headers/ApiVersion"
             X-Ct-Api-Sha:
               $ref: "#/components/headers/ApiSha"
+            Strict-Transport-Security:
+              $ref: "#/components/headers/StrictTransportSecurity"
+            X-Content-Type-Options:
+              $ref: "#/components/headers/XContentTypeOptions"
+            X-Frame-Options:
+              $ref: "#/components/headers/XFrameOptions"
+            Referrer-Policy:
+              $ref: "#/components/headers/ReferrerPolicy"
+            Content-Security-Policy:
+              $ref: "#/components/headers/ContentSecurityPolicy"
         "502":
           $ref: "#/components/responses/BadGateway"
 
@@ -781,6 +871,42 @@ components:
       schema:
         type: string
         example: "9f8e7d6c5b4a"
+
+    StrictTransportSecurity:
+      description: |
+        HSTS policy, set unconditionally by the gateway on every response except `/live` and
+        `/ready`. Value is fixed, not configurable.
+      schema:
+        type: string
+        example: "max-age=31536000; includeSubDomains"
+
+    XContentTypeOptions:
+      description: Disables MIME-type sniffing. Fixed value, absent on `/live` and `/ready`.
+      schema:
+        type: string
+        example: "nosniff"
+
+    XFrameOptions:
+      description: |
+        Legacy clickjacking guard, kept alongside the CSP `frame-ancestors` directive.
+        Fixed value, absent on `/live` and `/ready`.
+      schema:
+        type: string
+        example: "DENY"
+
+    ReferrerPolicy:
+      description: Fixed value, absent on `/live` and `/ready`.
+      schema:
+        type: string
+        example: "strict-origin-when-cross-origin"
+
+    ContentSecurityPolicy:
+      description: |
+        API-appropriate CSP for a JSON-only service — no script/style execution, no framing.
+        Fixed value, absent on `/live` and `/ready`.
+      schema:
+        type: string
+        example: "default-src 'none'; frame-ancestors 'none'"
 
   # ---------------------------------------------------------------------------
   # SCHEMAS
@@ -906,6 +1032,16 @@ components:
           schema:
             type: string
             example: "true"
+        Strict-Transport-Security:
+          $ref: "#/components/headers/StrictTransportSecurity"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/XContentTypeOptions"
+        X-Frame-Options:
+          $ref: "#/components/headers/XFrameOptions"
+        Referrer-Policy:
+          $ref: "#/components/headers/ReferrerPolicy"
+        Content-Security-Policy:
+          $ref: "#/components/headers/ContentSecurityPolicy"
       content:
         application/json:
           schema:
@@ -933,6 +1069,16 @@ components:
           $ref: "#/components/headers/ApiVersion"
         X-Ct-Api-Sha:
           $ref: "#/components/headers/ApiSha"
+        Strict-Transport-Security:
+          $ref: "#/components/headers/StrictTransportSecurity"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/XContentTypeOptions"
+        X-Frame-Options:
+          $ref: "#/components/headers/XFrameOptions"
+        Referrer-Policy:
+          $ref: "#/components/headers/ReferrerPolicy"
+        Content-Security-Policy:
+          $ref: "#/components/headers/ContentSecurityPolicy"
       content:
         application/json:
           schema:
@@ -950,6 +1096,16 @@ components:
           $ref: "#/components/headers/GatewayVersion"
         X-Ct-Gateway-Sha:
           $ref: "#/components/headers/GatewaySha"
+        Strict-Transport-Security:
+          $ref: "#/components/headers/StrictTransportSecurity"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/XContentTypeOptions"
+        X-Frame-Options:
+          $ref: "#/components/headers/XFrameOptions"
+        Referrer-Policy:
+          $ref: "#/components/headers/ReferrerPolicy"
+        Content-Security-Policy:
+          $ref: "#/components/headers/ContentSecurityPolicy"
       content:
         application/json:
           schema:
@@ -968,6 +1124,16 @@ components:
           $ref: "#/components/headers/GatewayVersion"
         X-Ct-Gateway-Sha:
           $ref: "#/components/headers/GatewaySha"
+        Strict-Transport-Security:
+          $ref: "#/components/headers/StrictTransportSecurity"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/XContentTypeOptions"
+        X-Frame-Options:
+          $ref: "#/components/headers/XFrameOptions"
+        Referrer-Policy:
+          $ref: "#/components/headers/ReferrerPolicy"
+        Content-Security-Policy:
+          $ref: "#/components/headers/ContentSecurityPolicy"
       content:
         application/json:
           schema:
@@ -999,6 +1165,16 @@ components:
         X-RateLimit-Remaining:
           schema:
             type: string
+        Strict-Transport-Security:
+          $ref: "#/components/headers/StrictTransportSecurity"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/XContentTypeOptions"
+        X-Frame-Options:
+          $ref: "#/components/headers/XFrameOptions"
+        Referrer-Policy:
+          $ref: "#/components/headers/ReferrerPolicy"
+        Content-Security-Policy:
+          $ref: "#/components/headers/ContentSecurityPolicy"
       content:
         application/json:
           schema:
@@ -1017,6 +1193,16 @@ components:
           $ref: "#/components/headers/ApiVersion"
         X-Ct-Api-Sha:
           $ref: "#/components/headers/ApiSha"
+        Strict-Transport-Security:
+          $ref: "#/components/headers/StrictTransportSecurity"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/XContentTypeOptions"
+        X-Frame-Options:
+          $ref: "#/components/headers/XFrameOptions"
+        Referrer-Policy:
+          $ref: "#/components/headers/ReferrerPolicy"
+        Content-Security-Policy:
+          $ref: "#/components/headers/ContentSecurityPolicy"
       content:
         application/json:
           schema:
@@ -1065,6 +1251,16 @@ components:
           schema:
             type: string
             example: "9f8e7d6c5b4a"
+        Strict-Transport-Security:
+          $ref: "#/components/headers/StrictTransportSecurity"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/XContentTypeOptions"
+        X-Frame-Options:
+          $ref: "#/components/headers/XFrameOptions"
+        Referrer-Policy:
+          $ref: "#/components/headers/ReferrerPolicy"
+        Content-Security-Policy:
+          $ref: "#/components/headers/ContentSecurityPolicy"
       content:
         application/json:
           schema:
@@ -1082,6 +1278,16 @@ components:
           $ref: "#/components/headers/GatewayVersion"
         X-Ct-Gateway-Sha:
           $ref: "#/components/headers/GatewaySha"
+        Strict-Transport-Security:
+          $ref: "#/components/headers/StrictTransportSecurity"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/XContentTypeOptions"
+        X-Frame-Options:
+          $ref: "#/components/headers/XFrameOptions"
+        Referrer-Policy:
+          $ref: "#/components/headers/ReferrerPolicy"
+        Content-Security-Policy:
+          $ref: "#/components/headers/ContentSecurityPolicy"
       content:
         application/json:
           schema:

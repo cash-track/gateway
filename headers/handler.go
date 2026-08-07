@@ -28,5 +28,18 @@ func Handler(h fasthttp.RequestHandler) fasthttp.RequestHandler {
 
 		// propagate gateway build provenance to every response
 		WriteGatewayVersion(&ctx.Response.Header, config.Global.GitTag, config.Global.GitSha)
+
+		if !isHealthPath(ctx) {
+			writeSecurityHeaders(&ctx.Response.Header)
+		}
 	}
+}
+
+// writeSecurityHeaders sets standard defence-in-depth headers for a JSON-only API.
+func writeSecurityHeaders(h headerWriter) {
+	h.Set(StrictTransportSecurity, "max-age=31536000; includeSubDomains")
+	h.Set(XContentTypeOptions, "nosniff")
+	h.Set(XFrameOptions, "DENY")
+	h.Set(ReferrerPolicy, "strict-origin-when-cross-origin")
+	h.Set(ContentSecurityPolicy, "default-src 'none'; frame-ancestors 'none'")
 }

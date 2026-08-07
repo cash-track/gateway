@@ -31,11 +31,19 @@ var (
 		XCtApiVersion,
 		XCtApiSha,
 	}
-	CorsIgnorePaths = map[string]bool{
+	// healthPaths lists probe endpoints excluded from CORS and security response headers.
+	healthPaths = map[string]bool{
 		"/live":  true,
 		"/ready": true,
 	}
 )
+
+// isHealthPath reports whether ctx targets a health probe endpoint. Matches on
+// PathOriginal, the raw undecoded path fasthttp/router dispatches on, so an
+// encoded lookalike (a 404 to the router) isn't treated as the real probe.
+func isHealthPath(ctx *fasthttp.RequestCtx) bool {
+	return healthPaths[string(ctx.Request.URI().PathOriginal())]
+}
 
 // CorsHandler is a middleware to write default CORS headers if no forwarded.
 func CorsHandler(h fasthttp.RequestHandler) fasthttp.RequestHandler {
@@ -49,7 +57,7 @@ func CorsHandler(h fasthttp.RequestHandler) fasthttp.RequestHandler {
 }
 
 func validateCorsOrigin(ctx *fasthttp.RequestCtx) bool {
-	if _, ok := CorsIgnorePaths[string(ctx.Request.URI().Path())]; ok {
+	if isHealthPath(ctx) {
 		return false
 	}
 

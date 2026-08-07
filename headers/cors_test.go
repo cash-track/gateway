@@ -71,6 +71,21 @@ func TestCorsHandler(t *testing.T) {
 		assert.Empty(t, ctx.Response.Header.Peek(AccessControlExposeHeaders))
 	})
 
+	// /%6Cive decodes to /live, but fasthttp/router dispatches on the raw,
+	// undecoded path and would 404 this request. isHealthPath must agree with the
+	// router and not treat the encoded lookalike as the real health probe.
+	t.Run("DoesNotIgnorePercentEncodedLookalike", func(t *testing.T) {
+		ctx := fasthttp.RequestCtx{}
+		ctx.Request.Header.Set(Origin, "Test.Com")
+		ctx.Request.Header.Set(XForwardedFor, "127.0.0.1")
+		ctx.Request.URI().SetPath("/%6Cive")
+
+		handler := CorsHandler(func(ctx *fasthttp.RequestCtx) {})
+		handler(&ctx)
+
+		assert.Equal(t, "test.com", string(ctx.Response.Header.Peek(AccessControlAllowOrigin)))
+	})
+
 	t.Run("RejectAllowedByUpstream", func(t *testing.T) {
 		ctx := fasthttp.RequestCtx{}
 		ctx.Request.Header.Set(Origin, "Test.Com")
