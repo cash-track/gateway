@@ -1,13 +1,14 @@
 package logger
 
 import (
-	"fmt"
-	"log"
+	"log/slog"
+	"time"
 
 	"github.com/valyala/fasthttp"
 
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers"
+	"github.com/cash-track/gateway/traces"
 )
 
 var (
@@ -19,13 +20,13 @@ var (
 
 func DebugRequest(req *fasthttp.Request, service string) {
 	if config.Global.DebugHttp {
-		log.Printf("DEBUG REQ %s\n%s", service, req)
+		slog.Debug("debug request", "service", service, "dump", req.String())
 	}
 }
 
 func DebugResponse(resp *fasthttp.Response, service string) {
 	if config.Global.DebugHttp {
-		log.Printf("DEBUG RESP %s\n%s", service, resp)
+		slog.Debug("debug response", "service", service, "dump", resp.String())
 	}
 }
 
@@ -45,18 +46,33 @@ func DebugHandler(h fasthttp.RequestHandler) fasthttp.RequestHandler {
 	}
 }
 
-func FullForwarded(ctx *fasthttp.RequestCtx, req *fasthttp.Request, resp *fasthttp.Response, service string) {
-	line := fmt.Sprintf("[%s] %s %s", headers.GetClientIPFromContext(ctx), req.Header.Method(), req.URI().Path())
-
-	if req.URI().QueryArgs().Len() > 0 {
-		line += fmt.Sprintf("?%s", req.URI().QueryString())
+// FullForwarded logs one structured access-log line per forwarded request. duration is
+// the round trip to service only, not gateway-side work (auth/CSRF/captcha). Query string
+// and body size are omitted: both are already OpenTelemetry span attributes.
+//
+// path/method come from the inbound ctx.Request, not the gateway-rewritten outbound one,
+// so they match writeForwardError's fields for the same endpoint.
+func FullForwarded(
+	ctx *fasthttp.RequestCtx,
+	resp *fasthttp.Response,
+	service string,
+	duration time.Duration,
+) {
+	attrs := []any{
+		"trace_id", traces.FindTraceId(ctx),
+		"client_ip", headers.GetClientIPFromContext(ctx),
+		"method", string(ctx.Request.Header.Method()),
+		"path", string(ctx.Request.URI().Path()),
+		"status", resp.StatusCode(),
+		"duration_ms", duration.Milliseconds(),
+		"service", service,
 	}
 
-	if req.Body() != nil || len(req.Body()) > 0 {
-		line += fmt.Sprintf(" (body %db)", len(req.Body()))
+	if resp.StatusCode() >= fasthttp.StatusInternalServerError {
+		slog.Warn("request forwarded", attrs...)
+
+		return
 	}
 
-	line += fmt.Sprintf(" => %s resp %d (%db)", service, resp.StatusCode(), len(resp.Body()))
-
-	log.Print(line)
+	slog.Info("request forwarded", attrs...)
 }

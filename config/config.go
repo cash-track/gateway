@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"net/netip"
 	"net/url"
 	"os"
@@ -135,7 +135,7 @@ func getTrustedProxies(val string) []netip.Prefix {
 
 		prefix, err := parseTrustedProxy(v)
 		if err != nil {
-			log.Printf("Skipping invalid TRUSTED_PROXIES entry %q: %s", v, err)
+			slog.Warn("skipping invalid TRUSTED_PROXIES entry", "value", v, "error", err)
 
 			continue
 		}

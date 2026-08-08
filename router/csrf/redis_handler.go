@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -142,7 +142,7 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "invalid")
 			span.End()
-			log.Printf("Error on validating CSRF token: %v", err)
+			slog.Warn("CSRF token validation error", "trace_id", traces.FindTraceId(ctx), "error", err)
 			response.ByErrorAndStatus(err, fasthttp.StatusExpectationFailed).Write(ctx)
 
 			return
@@ -165,7 +165,8 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 			if err != nil {
 				rotateSpan.RecordError(err)
 				rotateSpan.SetStatus(codes.Error, "rotate error")
-				log.Printf("ALERT: CSRF token rotation failed, response left as-is: %v", err)
+				slog.Error("CSRF token rotation failed, response left as-is",
+					"trace_id", traces.FindTraceId(ctx), "error", err)
 				csrfRotationFailedTotal.Inc()
 
 				return
@@ -201,7 +202,7 @@ func (r *RedisHandler) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "unknown")
-		log.Printf("Error on rotating CSRF token: %v", err)
+		slog.Warn("CSRF token rotation error", "trace_id", traces.FindTraceId(ctx), "error", err)
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 
 		return
@@ -298,7 +299,8 @@ func (r *RedisHandler) verify(ctx context.Context, userCtx userContext) error {
 		}
 
 		csrfRedisUp.Set(0)
-		log.Printf("ALERT: CSRF validation failed open, redis unreachable: %v", err)
+		slog.Error("CSRF validation failed open, redis unreachable",
+			"trace_id", trace.SpanContextFromContext(ctx).TraceID().String(), "error", err)
 		csrfValidationFailedOpenTotal.Inc()
 
 		return nil
@@ -306,7 +308,9 @@ func (r *RedisHandler) verify(ctx context.Context, userCtx userContext) error {
 	csrfRedisUp.Set(1)
 
 	if strings.Compare(userCtx.cookie.Token, cmd.Val()) != 0 {
-		log.Printf("CSRF token is invalid: requested %s stored %s", userCtx.cookie.Token, cmd.Val())
+		// Do not log the requested/stored token values.
+		slog.Warn("CSRF token mismatch",
+			"trace_id", trace.SpanContextFromContext(ctx).TraceID().String())
 
 		return fmt.Errorf("invalid CSRF token")
 	}
@@ -323,7 +327,7 @@ func generateNewToken() string {
 func getUserContextFromAccessToken(accessToken string) (string, error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("JWT decoding recovered from panic: %v", r)
+			slog.Error("JWT decoding recovered from panic", "error", r)
 		}
 	}()
 

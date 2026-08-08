@@ -1,8 +1,10 @@
 package csrf
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"log/slog"
 	"testing"
 
 	"github.com/go-redis/redismock/v9"
@@ -211,6 +213,45 @@ func TestHandler(t *testing.T) {
 				t.Error(err)
 			}
 		})
+	}
+}
+
+// Regression test: the old log.Printf for a CSRF mismatch printed both raw token values;
+// neither must reach the logs.
+func TestHandlerLogsTokenMismatchWithoutLeakingTokenValues(t *testing.T) {
+	accessToken, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": 123987,
+		"iat": 987654321,
+	}).SignedString([]byte("asd"))
+
+	requestedToken := "csrf_token_requested_secret"
+	storedToken := "csrf_token_stored_secret"
+
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+	ctx.Request.Header.SetCookie(cookie.CsrfTokenCookieName, requestedToken)
+	ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, accessToken)
+
+	client, mock := redismock.NewClientMock()
+	key := fmt.Sprintf("%s:%d:%d", keyPrefix, 123987, 987654321)
+	mock.ExpectGet(key).SetVal(storedToken)
+
+	handler := NewRedisHandler(client)
+	handler.Handler(func(ctx *fasthttp.RequestCtx) {})(&ctx)
+
+	logs := output.String()
+
+	assert.Contains(t, logs, "CSRF token mismatch")
+	assert.NotContains(t, logs, requestedToken)
+	assert.NotContains(t, logs, storedToken)
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
 	}
 }
 

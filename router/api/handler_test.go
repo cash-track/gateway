@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"testing"
@@ -16,6 +18,21 @@ import (
 	"github.com/cash-track/gateway/mocks"
 	"github.com/cash-track/gateway/service/api"
 )
+
+// setTestLogger redirects slog.Default() to a buffer, restored on cleanup.
+func setTestLogger(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+	t.Cleanup(func() {
+		slog.SetDefault(previous)
+	})
+
+	return &output
+}
 
 func TestAuthSetHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -255,6 +272,57 @@ func TestFullForwardedHandlerError(t *testing.T) {
 	h.FullForwardedHandler(&ctx)
 
 	assert.Equal(t, fasthttp.StatusBadGateway, ctx.Response.StatusCode())
+}
+
+// Circuit-open is an expected degraded-mode response (has its own Retry-After), so it
+// must log at Warn, not Error.
+func TestWriteForwardErrorLogsAtWarnOnCircuitOpen(t *testing.T) {
+	output := setTestLogger(t)
+
+	ctrl := gomock.NewController(t)
+	s := mocks.NewApiServiceMock(ctrl)
+	c := mocks.NewCaptchaProviderMock(ctrl)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+	ctx.Request.SetRequestURI("/wallets")
+
+	s.EXPECT().ForwardRequest(gomock.Any(), nil).Return(fmt.Errorf("wrapped: %w", api.ErrCircuitOpen))
+
+	h.FullForwardedHandler(&ctx)
+
+	logs := output.String()
+
+	assert.Contains(t, logs, `"level":"WARN"`)
+	assert.Contains(t, logs, "forward request rejected: circuit breaker open")
+	assert.Contains(t, logs, `"method":"POST"`)
+	assert.Contains(t, logs, `"path":"/wallets"`)
+}
+
+// A non-circuit-breaker transport failure is unexpected and must log at Error.
+func TestWriteForwardErrorLogsAtErrorOnGenericFailure(t *testing.T) {
+	output := setTestLogger(t)
+
+	ctrl := gomock.NewController(t)
+	s := mocks.NewApiServiceMock(ctrl)
+	c := mocks.NewCaptchaProviderMock(ctrl)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+	ctx.Request.SetRequestURI("/wallets")
+
+	s.EXPECT().ForwardRequest(gomock.Any(), nil).Return(fmt.Errorf("broken pipe"))
+
+	h.FullForwardedHandler(&ctx)
+
+	logs := output.String()
+
+	assert.Contains(t, logs, `"level":"ERROR"`)
+	assert.Contains(t, logs, "forward request failed")
+	assert.Contains(t, logs, `"method":"POST"`)
+	assert.Contains(t, logs, `"path":"/wallets"`)
 }
 
 func TestFullForwardedHandlerCircuitOpen(t *testing.T) {

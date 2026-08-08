@@ -3,7 +3,7 @@ package captcha
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -79,7 +79,7 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 
 	if p.secret == "" {
 		span.SetStatus(codes.Ok, "disabled")
-		log.Printf("[%s] captcha secret empty, skipping verify", clientIp)
+		slog.Info("captcha secret empty, skipping verify", "client_ip", clientIp)
 
 		return true, nil
 	}
@@ -93,7 +93,7 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 	challenge := ctx.Request.Header.Peek(headers.XCtCaptchaChallenge)
 	if challenge == nil || string(challenge) == "" {
 		span.SetStatus(codes.Error, "empty challenge")
-		log.Printf("[%s] captcha challenge empty", clientIp)
+		slog.Warn("captcha challenge empty", "client_ip", clientIp)
 
 		return false, nil
 	}
@@ -129,18 +129,17 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 	span.SetAttributes(traces.AttributesGetter(&verifyResp)...)
 
 	if !verifyResp.Success {
-		log.Printf(
-			"[%s] captcha verify unsuccessful: score %f, errors: %s",
-			clientIp,
-			verifyResp.Score,
-			strings.Join(verifyResp.ErrorCodes, ", "),
+		slog.Warn("captcha verify unsuccessful",
+			"client_ip", clientIp,
+			"score", verifyResp.Score,
+			"error", strings.Join(verifyResp.ErrorCodes, ", "),
 		)
 		span.SetStatus(codes.Error, "validation failed")
 
 		return false, nil
 	}
 
-	log.Printf("[%s] captcha verify: ok", clientIp)
+	slog.Info("captcha verify ok", "client_ip", clientIp)
 	span.SetStatus(codes.Ok, "ok")
 
 	return true, nil

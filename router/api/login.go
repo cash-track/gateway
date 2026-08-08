@@ -3,11 +3,12 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/valyala/fasthttp"
 
 	"github.com/cash-track/gateway/headers/cookie"
+	"github.com/cash-track/gateway/traces"
 )
 
 func (h *HttpHandler) Login(ctx *fasthttp.RequestCtx) error {
@@ -25,7 +26,7 @@ func (h *HttpHandler) Login(ctx *fasthttp.RequestCtx) error {
 	// Seed the initial CSRF token. Non-fatal: if Redis is unavailable the user
 	// will recover automatically on their first mutation via GET /csrf.
 	if err := h.csrf.Seed(ctx, auth); err != nil {
-		log.Printf("csrf seed failed after login: %v", err)
+		slog.Warn("csrf seed failed after login", "trace_id", traces.FindTraceId(ctx), "error", err)
 	}
 
 	b, _ := h.newWebAppRedirect().ToJson()

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strconv"
 
 	"github.com/valyala/fasthttp"
@@ -16,6 +16,7 @@ import (
 	"github.com/cash-track/gateway/router/csrf"
 	"github.com/cash-track/gateway/router/response"
 	"github.com/cash-track/gateway/service/api"
+	"github.com/cash-track/gateway/traces"
 )
 
 var allowedMethods = map[string]bool{
@@ -82,7 +83,10 @@ func (h *HttpHandler) AuthResetHandler(ctx *fasthttp.RequestCtx) {
 		RefreshToken: auth.RefreshToken,
 	})
 	if err != nil {
-		log.Printf("logout: forwarding to backend failed, clearing cookies locally anyway: %v", err)
+		slog.Warn("logout: forwarding to backend failed, clearing cookies locally anyway",
+			"trace_id", traces.FindTraceId(ctx),
+			"error", err,
+		)
 	}
 
 	// The response is gateway-authored, so drop everything CopyFromResponse may have
@@ -147,12 +151,23 @@ func (h *HttpHandler) FullForwardedHandlerWithBody(ctx *fasthttp.RequestCtx, bod
 // writeForwardError maps a ForwardRequest failure to a response: 503 with a Retry-After
 // hint when the circuit breaker is open, 502 for any other transport error.
 func writeForwardError(ctx *fasthttp.RequestCtx, err error) {
+	attrs := []any{
+		"trace_id", traces.FindTraceId(ctx),
+		"method", string(ctx.Request.Header.Method()),
+		"path", string(ctx.Request.URI().Path()),
+		"error", err,
+	}
+
 	if errors.Is(err, api.ErrCircuitOpen) {
+		slog.Warn("forward request rejected: circuit breaker open", attrs...)
+
 		ctx.Response.Header.Set(headers.RetryAfter, strconv.Itoa(api.RetryAfterSeconds))
 		response.ByErrorAndStatus(err, fasthttp.StatusServiceUnavailable).Write(ctx)
 
 		return
 	}
+
+	slog.Error("forward request failed", attrs...)
 
 	response.ByErrorAndStatus(err, fasthttp.StatusBadGateway).Write(ctx)
 }

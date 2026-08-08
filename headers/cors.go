@@ -2,7 +2,7 @@ package headers
 
 import (
 	"bytes"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/valyala/fasthttp"
@@ -65,7 +65,7 @@ func validateCorsOrigin(ctx *fasthttp.RequestCtx) bool {
 	if val := ctx.Response.Header.Peek(AccessControlAllowOrigin); val != nil {
 		// CORS headers were already configured by upstream
 		if config.Global.DebugHttp {
-			log.Printf("[%s] CORS validation for origin by upstream: %s", clientIp, val)
+			slog.Debug("CORS validation for origin by upstream", "client_ip", clientIp, "origin", string(val))
 		}
 
 		return false
@@ -75,7 +75,7 @@ func validateCorsOrigin(ctx *fasthttp.RequestCtx) bool {
 	_, ok := config.Global.CorsAllowedOrigins[origin]
 
 	if config.Global.DebugHttp {
-		log.Printf("[%s] CORS validation for origin %s by gateway: %v", clientIp, origin, ok)
+		slog.Debug("CORS validation for origin by gateway", "client_ip", clientIp, "origin", origin, "allowed", ok)
 	}
 
 	return ok

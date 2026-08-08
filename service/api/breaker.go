@@ -1,8 +1,9 @@
 package api
 
 import (
+	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -47,7 +48,12 @@ func NewBreaker() *gobreaker.CircuitBreaker[struct{}] {
 			return counts.ConsecutiveFailures > breakerFailureThreshold
 		},
 		OnStateChange: func(name string, from, to gobreaker.State) {
-			log.Printf("[%s] circuit breaker state change: %s -> %s", name, from, to)
+			level := slog.LevelInfo
+			if to == gobreaker.StateOpen {
+				level = slog.LevelWarn
+			}
+			slog.Log(context.Background(), level, "circuit breaker state change",
+				"service", name, "from", from.String(), "to", to.String())
 		},
 	})
 }

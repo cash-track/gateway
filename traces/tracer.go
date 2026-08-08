@@ -3,7 +3,7 @@ package traces
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -56,7 +56,7 @@ func NewTracer(ctx context.Context) (*sdktrace.TracerProvider, func(), error) {
 
 	return tracerProvider, func() {
 		if err := tracerProvider.Shutdown(ctx); err != nil {
-			log.Printf("Error shutting down OpenTelemetry tracer: %v\n", err)
+			slog.Error("error shutting down OpenTelemetry tracer", "error", err)
 		}
 	}, nil
 }

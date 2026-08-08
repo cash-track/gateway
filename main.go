@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
+	"os"
 	"time"
 
 	prom "github.com/flf2ko/fasthttp-prometheus"
@@ -29,12 +30,17 @@ const (
 )
 
 func main() {
+	// Debug level so DebugRequest/DebugResponse (gated by config.Global.DebugHttp) can emit.
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
+	slog.SetDefault(slog.New(handler).With("component", "gateway"))
+
 	ctx := context.Background()
 
 	config.Global.Load()
 
 	if _, tracerClose, err := traces.NewTracer(ctx); err != nil {
-		log.Fatalf("Error creating OpenTelemetry tracer: %v", err)
+		slog.Error("error creating OpenTelemetry tracer", "error", err)
+		os.Exit(1)
 	} else {
 		defer tracerClose()
 	}
@@ -92,18 +98,20 @@ func buildHandler(inner fasthttp.RequestHandler, csrf csrfHandler.Handler) fasth
 }
 
 func start(s *fasthttp.Server) {
-	log.Printf("Listening on HTTP %s", config.Global.Address)
+	slog.Info("listening on HTTP", "address", config.Global.Address)
 
 	if err := s.ListenAndServe(config.Global.Address); err != nil {
-		log.Fatalf("Error in HTTP server: %v", err)
+		slog.Error("error in HTTP server", "error", err)
+		os.Exit(1)
 	}
 }
 
 func startTls(s *fasthttp.Server) {
-	log.Printf("Listening on HTTPS %s", config.Global.Address)
+	slog.Info("listening on HTTPS", "address", config.Global.Address)
 
 	if err := s.ListenAndServeTLS(config.Global.Address, config.Global.HttpsCrt, config.Global.HttpsKey); err != nil {
-		log.Fatalf("Error in HTTPS server: %v", err)
+		slog.Error("error in HTTPS server", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -113,17 +121,19 @@ func getRedisClient() *redis.Client {
 	})
 
 	if err := redisotel.InstrumentTracing(client); err != nil {
-		log.Fatalf("Error configuring OTEL instrument to redis: %v", err)
+		slog.Error("error configuring OTEL instrument to redis", "error", err)
+		os.Exit(1)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), redisClientConnectTimeout)
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Error connecting to redis: %v", err)
+		slog.Error("error connecting to redis", "error", err)
+		os.Exit(1)
 	}
 
-	log.Printf("Connected to Redis at %s\n", config.Global.RedisConnection)
+	slog.Info("connected to redis", "address", config.Global.RedisConnection)
 
 	return client
 }
