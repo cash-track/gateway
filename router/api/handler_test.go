@@ -2,6 +2,8 @@ package api
 
 import (
 	"fmt"
+	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,8 +11,10 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/cash-track/gateway/config"
+	"github.com/cash-track/gateway/headers"
 	"github.com/cash-track/gateway/headers/cookie"
 	"github.com/cash-track/gateway/mocks"
+	"github.com/cash-track/gateway/service/api"
 )
 
 func TestAuthSetHandler(t *testing.T) {
@@ -111,6 +115,112 @@ func TestAuthResetHandler(t *testing.T) {
 	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.RefreshTokenCookieName)), fmt.Sprintf("%s=;", cookie.RefreshTokenCookieName))
 }
 
+// Logout stays effective when the forward fails, so an open breaker does not turn every
+// logout into a 503 for the whole timeout window.
+func TestAuthResetHandlerForwardError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	s := mocks.NewApiServiceMock(ctrl)
+	c := mocks.NewCaptchaProviderMock(ctrl)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token_test")
+
+	body := []byte(`{"refreshToken":"refresh_token_test"}`)
+
+	s.EXPECT().ForwardRequest(gomock.Any(), body).Return(fmt.Errorf("wrapped: %w", api.ErrCircuitOpen))
+
+	h.AuthResetHandler(&ctx)
+
+	assert.Equal(t, fasthttp.StatusOK, ctx.Response.StatusCode())
+	assert.Empty(t, ctx.Response.Header.Peek(headers.RetryAfter))
+	assert.JSONEq(t, `{"redirectUrl":""}`, string(ctx.Response.Body()))
+	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), fmt.Sprintf("%s=;", cookie.AccessTokenCookieName))
+	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.RefreshTokenCookieName)), fmt.Sprintf("%s=;", cookie.RefreshTokenCookieName))
+}
+
+// ForwardRequest returns nil on any completed round-trip and copies the backend's raw
+// status and headers onto ctx, so a backend 4xx/5xx must not leak into this always-200
+// endpoint.
+func TestAuthResetHandlerBackendErrorStatus(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	s := mocks.NewApiServiceMock(ctrl)
+	c := mocks.NewCaptchaProviderMock(ctrl)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token_test")
+
+	body := []byte(`{"refreshToken":"refresh_token_test"}`)
+
+	s.EXPECT().ForwardRequest(gomock.Any(), body).DoAndReturn(func(ctx *fasthttp.RequestCtx, body []byte) error {
+		ctx.Response.SetStatusCode(fasthttp.StatusUnauthorized)
+		ctx.Response.Header.Set(headers.RetryAfter, "60")
+		ctx.Response.Header.SetContentType("text/html; charset=utf-8")
+
+		return nil
+	})
+
+	h.AuthResetHandler(&ctx)
+
+	assert.Equal(t, fasthttp.StatusOK, ctx.Response.StatusCode())
+	assert.Equal(t, string(headers.ContentTypeJson), string(ctx.Response.Header.ContentType()))
+	assert.Empty(t, ctx.Response.Header.Peek(headers.RetryAfter))
+	assert.JSONEq(t, `{"redirectUrl":""}`, string(ctx.Response.Body()))
+	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), fmt.Sprintf("%s=;", cookie.AccessTokenCookieName))
+	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.RefreshTokenCookieName)), fmt.Sprintf("%s=;", cookie.RefreshTokenCookieName))
+}
+
+// Mocks only the HTTP transport so the real CopyFromResponse runs: a backend 429 carries
+// Retry-After, X-Ratelimit-* and its own Content-Type, none of which may leak here.
+func TestAuthResetHandlerBackendRateLimited(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	c := mocks.NewCaptchaProviderMock(ctrl)
+	httpClient := mocks.NewHttpRetryClientMock(ctrl)
+	httpClient.EXPECT().WithReadTimeout(gomock.Any())
+	httpClient.EXPECT().WithWriteTimeout(gomock.Any())
+	httpClient.EXPECT().WithRetryAttempts(gomock.Any())
+	httpClient.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusTooManyRequests)
+		resp.Header.Set(headers.RetryAfter, "42")
+		resp.Header.Set(headers.XRateLimit, "60")
+		resp.Header.Set(headers.XRateLimitRemaining, "0")
+		resp.Header.SetContentType("application/json")
+		resp.SetBodyString(`{"message":"too many requests"}`)
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse("https://backend.test.com")
+	svc := api.NewHttp(httpClient, config.Config{ApiURI: apiUrl}, nil, api.NewBreaker())
+	h := NewHttp(config.Config{}, svc, c, &mockCSRFSeeder{})
+
+	uri := &fasthttp.URI{}
+	_ = uri.Parse(nil, []byte("https://gateway.test.com/api/auth/logout"))
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token_test")
+	ctx.Request.SetURI(uri)
+
+	// The real middleware applies the default Content-Type after the inner handler, which
+	// is where a Response.Reset() can regress to text/plain or no Content-Type at all.
+	headers.Handler(func(ctx *fasthttp.RequestCtx) {
+		h.AuthResetHandler(ctx)
+	})(&ctx)
+
+	assert.Equal(t, fasthttp.StatusOK, ctx.Response.StatusCode())
+	assert.Equal(t, string(headers.ContentTypeJson), string(ctx.Response.Header.ContentType()))
+	assert.Empty(t, ctx.Response.Header.Peek(headers.RetryAfter))
+	assert.Empty(t, ctx.Response.Header.Peek(headers.XRateLimit))
+	assert.Empty(t, ctx.Response.Header.Peek(headers.XRateLimitRemaining))
+	assert.JSONEq(t, `{"redirectUrl":""}`, string(ctx.Response.Body()))
+	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), fmt.Sprintf("%s=;", cookie.AccessTokenCookieName))
+	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.RefreshTokenCookieName)), fmt.Sprintf("%s=;", cookie.RefreshTokenCookieName))
+}
+
 func TestFullForwardedHandler(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
@@ -145,6 +255,40 @@ func TestFullForwardedHandlerError(t *testing.T) {
 	h.FullForwardedHandler(&ctx)
 
 	assert.Equal(t, fasthttp.StatusBadGateway, ctx.Response.StatusCode())
+}
+
+func TestFullForwardedHandlerCircuitOpen(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	s := mocks.NewApiServiceMock(ctrl)
+	c := mocks.NewCaptchaProviderMock(ctrl)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+
+	s.EXPECT().ForwardRequest(gomock.Any(), nil).Return(fmt.Errorf("wrapped: %w", api.ErrCircuitOpen))
+
+	h.FullForwardedHandler(&ctx)
+
+	assert.Equal(t, fasthttp.StatusServiceUnavailable, ctx.Response.StatusCode())
+	assert.Equal(t, strconv.Itoa(api.RetryAfterSeconds), string(ctx.Response.Header.Peek(headers.RetryAfter)))
+}
+
+func TestFullForwardedHandlerWithBodyCircuitOpen(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	s := mocks.NewApiServiceMock(ctrl)
+	c := mocks.NewCaptchaProviderMock(ctrl)
+	h := NewHttp(config.Config{}, s, c, &mockCSRFSeeder{})
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+
+	s.EXPECT().ForwardRequest(gomock.Any(), []byte(`{"test":"123"}`)).Return(fmt.Errorf("wrapped: %w", api.ErrCircuitOpen))
+
+	h.FullForwardedHandlerWithBody(&ctx, map[string]string{"test": "123"})
+
+	assert.Equal(t, fasthttp.StatusServiceUnavailable, ctx.Response.StatusCode())
+	assert.Equal(t, strconv.Itoa(api.RetryAfterSeconds), string(ctx.Response.Header.Peek(headers.RetryAfter)))
 }
 
 func TestFullForwardedHandlerRestrictedMethod(t *testing.T) {

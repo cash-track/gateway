@@ -41,7 +41,7 @@ func TestFullForwardRequestWithAuth(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	uri := &fasthttp.URI{}
 	_ = uri.Parse(nil, []byte("https://gateway.test.com/api/auth/profile"))
@@ -77,7 +77,7 @@ func TestForwardRequestWithBodyOverride(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -108,7 +108,7 @@ func TestForwardRequestSetsGatewayVersionHeaders(t *testing.T) {
 		ApiURI: apiUrl,
 		GitTag: "v1.2.3",
 		GitSha: "abc123",
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -136,7 +136,7 @@ func TestForwardRequestOmitsGatewayVersionHeadersWhenEmpty(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -164,7 +164,7 @@ func TestForwardRequestSetsGatewaySecretHeader(t *testing.T) {
 	s := NewHttp(h, config.Config{
 		ApiURI:        apiUrl,
 		GatewaySecret: "shared-secret",
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -191,7 +191,7 @@ func TestForwardRequestOmitsGatewaySecretHeaderWhenEmpty(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -239,7 +239,7 @@ func TestForwardRequestGatewaySecretHeaderPersistsAcrossRefreshRetry(t *testing.
 	s := NewHttp(h, config.Config{
 		ApiURI:        apiUrl,
 		GatewaySecret: "shared-secret",
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -292,7 +292,7 @@ func TestForwardRequestGatewayVersionHeadersPersistAcrossRefreshRetry(t *testing
 		ApiURI: apiUrl,
 		GitTag: "v1.2.3",
 		GitSha: "abc123",
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -337,7 +337,7 @@ func TestForwardRequestWithAuthRefresh(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -376,7 +376,7 @@ func TestForwardRequestWithAuthRefreshExpiredLogsOut(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -409,7 +409,7 @@ func TestForwardRequestWithAuthRefreshTransientKeepsSession(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -446,7 +446,7 @@ func TestForwardRequestWithAuthRefreshApi5xxKeepsSession(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -494,7 +494,7 @@ func TestForwardRequestWithAuthRefreshSecondFail(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -517,7 +517,7 @@ func TestForwardRequestError(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -559,7 +559,7 @@ func TestForwardRequestWithAuthRefreshSeedsCsrf(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, csrf)
+	}, csrf, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -598,7 +598,7 @@ func TestForwardRequestWithAuthRefreshCsrfSeedError(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, csrf)
+	}, csrf, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -635,7 +635,7 @@ func TestForwardRequestWithAuthRefreshSecondFailNoSeed(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, csrf)
+	}, csrf, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -673,7 +673,7 @@ func TestForwardRequestWithAuthRefreshNon2xxNoSeed(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, csrf)
+	}, csrf, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)

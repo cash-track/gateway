@@ -2,6 +2,7 @@ package csrf
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
 	"go.opentelemetry.io/otel/attribute"
@@ -23,9 +26,40 @@ import (
 )
 
 const (
-	keyPrefix = "CT:csrf"
-	tokenTtl  = time.Minute * 10
+	keyPrefix         = "CT:csrf"
+	tokenTtl          = time.Minute * 10
+	metricsNamespace  = "gateway"
+	metricsCsrfSubsys = "csrf"
 )
+
+var csrfRotationFailedTotal = promauto.NewCounter(prometheus.CounterOpts{
+	Namespace: metricsNamespace,
+	Subsystem: metricsCsrfSubsys,
+	Name:      "rotation_failed_total",
+	Help:      "CSRF token rotations that failed after a successful response, leaving the response untouched.",
+})
+
+var csrfValidationFailedOpenTotal = promauto.NewCounter(prometheus.CounterOpts{
+	Namespace: metricsNamespace,
+	Subsystem: metricsCsrfSubsys,
+	Name:      "validation_failed_open_total",
+	Help:      "CSRF validations that failed open because Redis was unreachable (not a missing/expired token).",
+})
+
+// csrfRedisUp is updated as requests flow through, not by a dedicated health check.
+var csrfRedisUp = newRedisUpGauge()
+
+func newRedisUpGauge() prometheus.Gauge {
+	g := promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: metricsNamespace,
+		Subsystem: metricsCsrfSubsys,
+		Name:      "redis_up",
+		Help:      "Whether the last CSRF Redis operation succeeded (1) or failed (0). Optimistic 1 before first use.",
+	})
+	g.Set(1)
+
+	return g
+}
 
 var (
 	csrfRequiredForMethods = map[string]bool{
@@ -131,8 +165,8 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 			if err != nil {
 				rotateSpan.RecordError(err)
 				rotateSpan.SetStatus(codes.Error, "rotate error")
-				log.Printf("Error on rotating CSRF token: %v", err)
-				ctx.SetStatusCode(fasthttp.StatusInternalServerError)
+				log.Printf("ALERT: CSRF token rotation failed, response left as-is: %v", err)
+				csrfRotationFailedTotal.Inc()
 
 				return
 			}
@@ -239,18 +273,39 @@ func (r *RedisHandler) rotate(ctx context.Context, userCtx userContext) (string,
 	token := generateNewToken()
 
 	if err := r.client.SetEx(ctx, key, token, tokenTtl).Err(); err != nil {
+		csrfRedisUp.Set(0)
+
 		return "", fmt.Errorf("error on writing new token: %w", err)
 	}
+	csrfRedisUp.Set(1)
 
 	return token, nil
 }
 
+// verify checks the request's CSRF token against the one stored in Redis. A missing token
+// (redis.Nil) is a real failure and stays a 417. Any other error means Redis is
+// unreachable: fail open, since SameSite=Strict auth cookies already block classic CSRF
+// and this token is defence-in-depth only.
 func (r *RedisHandler) verify(ctx context.Context, userCtx userContext) error {
 	key := fmt.Sprintf("%s:%s", keyPrefix, userCtx.context)
 
-	if cmd := r.client.Get(ctx, key); cmd.Err() != nil {
-		return fmt.Errorf("error on reading token: %w", cmd.Err())
-	} else if strings.Compare(userCtx.cookie.Token, cmd.Val()) != 0 {
+	cmd := r.client.Get(ctx, key)
+	if err := cmd.Err(); err != nil {
+		if errors.Is(err, redis.Nil) {
+			csrfRedisUp.Set(1)
+
+			return fmt.Errorf("error on reading token: %w", err)
+		}
+
+		csrfRedisUp.Set(0)
+		log.Printf("ALERT: CSRF validation failed open, redis unreachable: %v", err)
+		csrfValidationFailedOpenTotal.Inc()
+
+		return nil
+	}
+	csrfRedisUp.Set(1)
+
+	if strings.Compare(userCtx.cookie.Token, cmd.Val()) != 0 {
 		log.Printf("CSRF token is invalid: requested %s stored %s", userCtx.cookie.Token, cmd.Val())
 
 		return fmt.Errorf("invalid CSRF token")

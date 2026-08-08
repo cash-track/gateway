@@ -258,6 +258,8 @@ paths:
           $ref: "#/components/responses/InternalError"
         "502":
           $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /api/auth/register:
     post:
@@ -316,6 +318,8 @@ paths:
           $ref: "#/components/responses/InternalError"
         "502":
           $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /api/auth/provider/google:
     post:
@@ -373,6 +377,8 @@ paths:
           $ref: "#/components/responses/InternalError"
         "502":
           $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /api/auth/login/passkey:
     post:
@@ -425,6 +431,8 @@ paths:
           $ref: "#/components/responses/InternalError"
         "502":
           $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /api/auth/login/passkey/init:
     post:
@@ -469,6 +477,10 @@ paths:
           $ref: "#/components/responses/CaptchaError"
         "500":
           $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
   /api/auth/logout:
     post:
@@ -571,6 +583,8 @@ paths:
           $ref: "#/components/responses/InternalError"
         "502":
           $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
     post:
       operationId: proxyPost
       summary: Proxy POST request to backend
@@ -612,6 +626,8 @@ paths:
           $ref: "#/components/responses/InternalError"
         "502":
           $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
     put:
       operationId: proxyPut
       summary: Proxy PUT request to backend
@@ -646,6 +662,8 @@ paths:
           $ref: "#/components/responses/InternalError"
         "502":
           $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
     patch:
       operationId: proxyPatch
       summary: Proxy PATCH request to backend
@@ -680,6 +698,8 @@ paths:
           $ref: "#/components/responses/InternalError"
         "502":
           $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
     delete:
       operationId: proxyDelete
       summary: Proxy DELETE request to backend
@@ -705,6 +725,8 @@ paths:
           $ref: "#/components/responses/InternalError"
         "502":
           $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
     options:
       operationId: proxyOptions
       summary: CORS preflight
@@ -767,6 +789,8 @@ paths:
               $ref: "#/components/headers/ContentSecurityPolicy"
         "502":
           $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 
 # =============================================================================
 # COMPONENTS
@@ -1210,7 +1234,7 @@ components:
 
     InternalError:
       description: |
-        HTTP 500. Three distinct origins share this status. Use the `X-Ct-Api-*` headers to
+        HTTP 500. Two distinct origins share this status. Use the `X-Ct-Api-*` headers to
         tell them apart: they are set by the backend and only ever relayed by the gateway, so
         their presence means the request reached the API.
 
@@ -1221,15 +1245,14 @@ components:
         2. **Captcha service failure**, on the captcha-gated auth routes only. The gateway could
            not get a usable answer from reCAPTCHA and rejected the request before forwarding.
            No `X-Ct-Api-*` headers.
-        3. **CSRF token rotation failure**, on authenticated `POST`/`PUT`/`PATCH`/`DELETE`.
-           Rotation runs *after* the backend has already replied, so the gateway overwrites the
-           status with `500` while leaving the backend's body and headers in place. The body
-           will therefore look like a success payload and `X-Ct-Api-*` headers **are** present.
-           The request itself was applied by the backend — only the new CSRF token was lost, and
-           the client recovers with `GET /csrf`.
 
-        A gateway failure to *reach* the backend is reported as `502` (see `BadGateway`), never
-        as `500`.
+        A background CSRF token rotation failure after a successful mutating request does
+        **not** produce a `500`: the gateway logs it and leaves the already-written response
+        untouched, so the client only notices on its *next* request via `GET /csrf`'s own `417`/
+        recovery flow.
+
+        A gateway failure to *reach* the backend is reported as `502` (see `BadGateway`) or,
+        while the circuit breaker is open, `503` (see `ServiceUnavailable`) — never as `500`.
       headers:
         X-Ct-Trace-Id:
           $ref: "#/components/headers/TraceId"
@@ -1239,14 +1262,14 @@ components:
           $ref: "#/components/headers/GatewaySha"
         X-Ct-Api-Version:
           description: |
-            Present when the response originated from the backend (origins 1 and 3 above),
+            Present when the response originated from the backend (origin 1 above),
             absent on a captcha failure (origin 2). See `#/components/headers/ApiVersion`.
           schema:
             type: string
             example: "v3.1.0"
         X-Ct-Api-Sha:
           description: |
-            Present when the response originated from the backend (origins 1 and 3 above),
+            Present when the response originated from the backend (origin 1 above),
             absent on a captcha failure (origin 2). See `#/components/headers/ApiSha`.
           schema:
             type: string
@@ -1295,6 +1318,55 @@ components:
           example:
             message: Unexpected error happened. Please try again later.
             error: ""
+
+    ServiceUnavailable:
+      description: |
+        HTTP 503. Two distinct origins share this status:
+
+        1. **Circuit breaker open.** Recent calls to the backend API have failed at the
+           transport level (timeout, connection refused, broken pipe — never a plain HTTP error
+           status), so the gateway rejects requests immediately instead of adding load to an
+           already-failing backend. The body is the gateway's standard JSON error shape and
+           `Retry-After` gives the number of seconds until the breaker allows another probe.
+           The `error` field is one of two strings, depending on which call the open breaker
+           rejected: `"API request error: circuit breaker is open"` for the initial forward, or
+           `"API request with fresh token error: circuit breaker is open"` for the retry issued
+           right after a successful access-token refresh. Both mean the same thing — the breaker
+           is open — and share the same `Retry-After` semantics; only the wrapping differs.
+        2. **Transient token-refresh failure.** The backend returned `401` for an expired access
+           token and the gateway's attempt to silently refresh it hit a transport error or
+           unexpected status. The session is preserved — auth cookies are left untouched — so
+           the client can safely retry the same request. The response has an **empty body** and
+           **no** `Retry-After` header.
+      headers:
+        X-Ct-Gateway-Version:
+          $ref: "#/components/headers/GatewayVersion"
+        X-Ct-Gateway-Sha:
+          $ref: "#/components/headers/GatewaySha"
+        Retry-After:
+          description: Present only on the circuit-breaker origin (1 above).
+          schema:
+            type: integer
+            example: 30
+        Strict-Transport-Security:
+          $ref: "#/components/headers/StrictTransportSecurity"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/XContentTypeOptions"
+        X-Frame-Options:
+          $ref: "#/components/headers/XFrameOptions"
+        Referrer-Policy:
+          $ref: "#/components/headers/ReferrerPolicy"
+        Content-Security-Policy:
+          $ref: "#/components/headers/ContentSecurityPolicy"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Unexpected error happened. Please try again later.
+            # Initial-forward wrapping shown here; see the description above for the
+            # equally-valid post-token-refresh-retry wrapping of the same origin.
+            error: "API request error: circuit breaker is open"
 
 # =============================================================================
 # GLOBAL SECURITY

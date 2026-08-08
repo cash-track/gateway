@@ -41,11 +41,13 @@ func main() {
 
 	redisClient := getRedisClient()
 	csrf := csrfHandler.NewRedisHandler(redisClient)
+	breaker := apiService.NewBreaker()
+	apiService.RegisterBreakerMetrics(breaker)
 
 	r := router.New(
 		apiHandler.NewHttp(
 			config.Global,
-			apiService.NewHttp(retryhttp.NewFastHttpRetryClient(), config.Global, csrf),
+			apiService.NewHttp(retryhttp.NewFastHttpRetryClient(), config.Global, csrf, breaker),
 			captcha.NewGoogleReCaptchaProvider(retryhttp.NewFastHttpRetryClient(), config.Global),
 			csrf,
 		),

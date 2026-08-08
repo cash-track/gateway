@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sony/gobreaker/v2"
 	"github.com/valyala/fasthttp"
 
 	"github.com/cash-track/gateway/config"
@@ -30,20 +31,27 @@ type Service interface {
 }
 
 type HttpService struct {
-	http   retryhttp.Client
-	config config.Config
-	csrf   csrf.CSRFSeeder
+	http    retryhttp.Client
+	config  config.Config
+	csrf    csrf.CSRFSeeder
+	breaker *gobreaker.CircuitBreaker[struct{}]
 }
 
-func NewHttp(http retryhttp.Client, config config.Config, csrf csrf.CSRFSeeder) *HttpService {
+func NewHttp(
+	http retryhttp.Client,
+	config config.Config,
+	csrf csrf.CSRFSeeder,
+	breaker *gobreaker.CircuitBreaker[struct{}],
+) *HttpService {
 	http.WithReadTimeout(httpReadTimeout)
 	http.WithWriteTimeout(httpWriteTimeout)
 	http.WithRetryAttempts(httpRetryAttempts)
 
 	return &HttpService{
-		http:   http,
-		config: config,
-		csrf:   csrf,
+		http:    http,
+		config:  config,
+		csrf:    csrf,
+		breaker: breaker,
 	}
 }
 

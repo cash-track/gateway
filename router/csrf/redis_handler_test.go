@@ -22,8 +22,10 @@ func TestHandler(t *testing.T) {
 	for name, test := range map[string]struct {
 		request             *fasthttp.RequestCtx
 		setup               func(mock redismock.ClientMock)
+		innerHandler        func(ctx *fasthttp.RequestCtx)
 		expectPass          bool
 		expectStatus        int
+		expectBody          string
 		expectCsrfCookieSet bool
 	}{
 		"TokenValidForPost": {
@@ -109,7 +111,22 @@ func TestHandler(t *testing.T) {
 			},
 			expectPass: false,
 		},
-		"VerifyError": {
+		"VerifyRedisNilStaysFailedClosed": {
+			request: func() *fasthttp.RequestCtx {
+				ctx := fasthttp.RequestCtx{}
+				ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+				ctx.Request.Header.SetCookie(cookie.CsrfTokenCookieName, "csrf_token")
+				ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, accessToken)
+				return &ctx
+			}(),
+			setup: func(mock redismock.ClientMock) {
+				key := fmt.Sprintf("%s:%d:%d", keyPrefix, 123987, 987654321)
+				mock.ExpectGet(key).RedisNil()
+			},
+			expectPass:   false,
+			expectStatus: fasthttp.StatusExpectationFailed,
+		},
+		"VerifyConnectivityErrorFailsOpen": {
 			request: func() *fasthttp.RequestCtx {
 				ctx := fasthttp.RequestCtx{}
 				ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -120,11 +137,18 @@ func TestHandler(t *testing.T) {
 			setup: func(mock redismock.ClientMock) {
 				key := fmt.Sprintf("%s:%d:%d", keyPrefix, 123987, 987654321)
 				mock.ExpectGet(key).SetErr(errors.New("broken pipe"))
+				mock.CustomMatch(func(expected, actual []interface{}) error {
+					assert.NotNil(t, actual)
+					if s, ok := actual[1].(string); ok {
+						assert.IsType(t, "", s)
+					}
+					return nil
+				}).ExpectSetEx(key, nil, 0).SetVal("token_1")
 			},
-			expectPass:   false,
-			expectStatus: fasthttp.StatusExpectationFailed,
+			expectPass:          true,
+			expectCsrfCookieSet: true,
 		},
-		"RotateError": {
+		"RotateErrorLeavesResponseUntouched": {
 			request: func() *fasthttp.RequestCtx {
 				ctx := fasthttp.RequestCtx{}
 				ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -143,8 +167,15 @@ func TestHandler(t *testing.T) {
 					return nil
 				}).ExpectSetEx(key, nil, 0).SetErr(errors.New("broken pipe"))
 			},
-			expectPass:   true,
-			expectStatus: fasthttp.StatusInternalServerError,
+			// A real response, not fasthttp's 200 default, so "left as-is" is provable.
+			innerHandler: func(ctx *fasthttp.RequestCtx) {
+				ctx.Response.SetStatusCode(299)
+				ctx.Response.SetBodyString("preset-body")
+			},
+			expectPass:          true,
+			expectStatus:        299,
+			expectBody:          "preset-body",
+			expectCsrfCookieSet: false,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -157,6 +188,9 @@ func TestHandler(t *testing.T) {
 			handler := NewRedisHandler(client)
 			handler.Handler(func(ctx *fasthttp.RequestCtx) {
 				handlersExecuted = true
+				if test.innerHandler != nil {
+					test.innerHandler(ctx)
+				}
 			})(test.request)
 
 			assert.Equal(t, test.expectPass, handlersExecuted)
@@ -168,6 +202,9 @@ func TestHandler(t *testing.T) {
 			}
 			if test.expectStatus > 0 {
 				assert.Equal(t, test.expectStatus, test.request.Response.StatusCode())
+			}
+			if test.expectBody != "" {
+				assert.Equal(t, test.expectBody, string(test.request.Response.Body()))
 			}
 
 			if err := mock.ExpectationsWereMet(); err != nil {

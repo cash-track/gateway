@@ -49,7 +49,7 @@ func TestRefreshTokenOk(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	auth := cookie.Auth{
 		RefreshToken: oldRefreshToken,
@@ -85,7 +85,7 @@ func TestRefreshTokenSetsGatewayVersionHeaders(t *testing.T) {
 		ApiURI: apiUrl,
 		GitTag: "v1.2.3",
 		GitSha: "abc123",
-	}, nil)
+	}, nil, testBreaker())
 
 	auth := cookie.Auth{RefreshToken: "refresh_token", AccessToken: "access_token"}
 
@@ -114,7 +114,7 @@ func TestRefreshTokenSetsGatewaySecretHeader(t *testing.T) {
 	s := NewHttp(h, config.Config{
 		ApiURI:        apiUrl,
 		GatewaySecret: "shared-secret",
-	}, nil)
+	}, nil, testBreaker())
 
 	auth := cookie.Auth{RefreshToken: "refresh_token", AccessToken: "access_token"}
 
@@ -140,7 +140,7 @@ func TestRefreshTokenFail(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	auth := cookie.Auth{}
 
@@ -162,7 +162,7 @@ func TestRefreshTokenError(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	auth := cookie.Auth{}
 
@@ -189,7 +189,7 @@ func TestRefreshTokenErrorBadResponse(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	auth := cookie.Auth{}
 
@@ -216,7 +216,7 @@ func TestRefreshTokenErrorLoggedOff(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	auth := cookie.Auth{}
 
