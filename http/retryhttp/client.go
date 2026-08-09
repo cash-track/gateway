@@ -1,7 +1,7 @@
 package retryhttp
 
 import (
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/cash-track/gateway/http"
@@ -40,7 +40,7 @@ func (c *FastHttpRetryClient) DoWithRetry(req *fasthttp.Request, resp *fasthttp.
 		return err
 	}
 
-	log.Printf("retrying request due to an error [attempt %d] : %s", attempts, err.Error())
+	slog.Warn("retrying request due to an error", "attempt", attempts, "error", err)
 
 	return c.DoWithRetry(req, resp, attempts-1)
 }

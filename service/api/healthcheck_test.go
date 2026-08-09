@@ -39,7 +39,7 @@ func TestHealthcheckOk(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 	err := s.Healthcheck()
 
 	assert.NoError(t, err)
@@ -65,7 +65,54 @@ func TestHealthcheckSetsGatewayVersionHeaders(t *testing.T) {
 		ApiURI: apiUrl,
 		GitTag: "v1.2.3",
 		GitSha: "abc123",
-	}, nil)
+	}, nil, testBreaker())
+	err := s.Healthcheck()
+
+	assert.NoError(t, err)
+}
+
+func TestHealthcheckSetsGatewaySecretHeader(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+
+		assert.Equal(t, "shared-secret", string(req.Header.Peek(headers.XGatewaySecret)))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI:        apiUrl,
+		GatewaySecret: "shared-secret",
+	}, nil, testBreaker())
+	err := s.Healthcheck()
+
+	assert.NoError(t, err)
+}
+
+func TestHealthcheckOmitsGatewaySecretHeaderWhenEmpty(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+
+		assert.Empty(t, req.Header.Peek(headers.XGatewaySecret))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, nil, testBreaker())
 	err := s.Healthcheck()
 
 	assert.NoError(t, err)
@@ -86,7 +133,7 @@ func TestHealthcheckFail(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 	err := s.Healthcheck()
 
 	assert.Error(t, err)
@@ -103,7 +150,7 @@ func TestHealthcheckError(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 	err := s.Healthcheck()
 
 	assert.Error(t, err)

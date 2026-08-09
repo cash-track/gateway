@@ -41,7 +41,7 @@ func TestFullForwardRequestWithAuth(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	uri := &fasthttp.URI{}
 	_ = uri.Parse(nil, []byte("https://gateway.test.com/api/auth/profile"))
@@ -77,7 +77,7 @@ func TestForwardRequestWithBodyOverride(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -108,7 +108,7 @@ func TestForwardRequestSetsGatewayVersionHeaders(t *testing.T) {
 		ApiURI: apiUrl,
 		GitTag: "v1.2.3",
 		GitSha: "abc123",
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -136,10 +136,115 @@ func TestForwardRequestOmitsGatewayVersionHeadersWhenEmpty(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+}
+
+func TestForwardRequestSetsGatewaySecretHeader(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+
+		assert.Equal(t, "shared-secret", string(req.Header.Peek(headers.XGatewaySecret)))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI:        apiUrl,
+		GatewaySecret: "shared-secret",
+	}, nil, testBreaker())
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+}
+
+func TestForwardRequestOmitsGatewaySecretHeaderWhenEmpty(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+
+		assert.Empty(t, req.Header.Peek(headers.XGatewaySecret))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, nil, testBreaker())
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+}
+
+// All three outbound requests of a 401-refresh-retry cycle must carry the shared secret:
+// the original forward, the refresh sub-request, and the retried forward.
+func TestForwardRequestGatewaySecretHeaderPersistsAcrossRefreshRetry(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	// 1st: original forwarded request, gets 401
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusUnauthorized)
+
+		assert.Equal(t, "shared-secret", string(req.Header.Peek(headers.XGatewaySecret)))
+
+		return nil
+	})
+	// 2nd: refresh request, built with its own req in refresh_token.go
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+
+		assert.Equal(t, "shared-secret", string(req.Header.Peek(headers.XGatewaySecret)))
+
+		return nil
+	})
+	// 3rd: retry, reusing the same req as the 1st
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+
+		assert.Equal(t, "shared-secret", string(req.Header.Peek(headers.XGatewaySecret)))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI:        apiUrl,
+		GatewaySecret: "shared-secret",
+	}, nil, testBreaker())
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+	ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, "access_token")
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token")
 
 	err := s.ForwardRequest(&ctx, nil)
 
@@ -187,7 +292,7 @@ func TestForwardRequestGatewayVersionHeadersPersistAcrossRefreshRetry(t *testing
 		ApiURI: apiUrl,
 		GitTag: "v1.2.3",
 		GitSha: "abc123",
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -232,7 +337,7 @@ func TestForwardRequestWithAuthRefresh(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -271,7 +376,7 @@ func TestForwardRequestWithAuthRefreshExpiredLogsOut(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -304,7 +409,7 @@ func TestForwardRequestWithAuthRefreshTransientKeepsSession(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -341,7 +446,7 @@ func TestForwardRequestWithAuthRefreshApi5xxKeepsSession(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -389,7 +494,7 @@ func TestForwardRequestWithAuthRefreshSecondFail(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -412,7 +517,7 @@ func TestForwardRequestError(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil)
+	}, nil, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -454,7 +559,7 @@ func TestForwardRequestWithAuthRefreshSeedsCsrf(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, csrf)
+	}, csrf, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -493,7 +598,7 @@ func TestForwardRequestWithAuthRefreshCsrfSeedError(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, csrf)
+	}, csrf, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -530,7 +635,7 @@ func TestForwardRequestWithAuthRefreshSecondFailNoSeed(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, csrf)
+	}, csrf, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -568,7 +673,7 @@ func TestForwardRequestWithAuthRefreshNon2xxNoSeed(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, csrf)
+	}, csrf, testBreaker())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)

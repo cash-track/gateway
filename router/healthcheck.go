@@ -1,7 +1,7 @@
 package router
 
 import (
-	"log"
+	"log/slog"
 
 	"github.com/valyala/fasthttp"
 )
@@ -20,7 +20,7 @@ func (r *Router) LiveHandler(ctx *fasthttp.RequestCtx) {
 // ReadyHandler check all dependency for service readiness.
 func (r *Router) ReadyHandler(ctx *fasthttp.RequestCtx) {
 	if err := r.api.Healthcheck(); err != nil {
-		log.Printf("API not ready: %s", err.Error())
+		slog.Warn("API not ready", "error", err)
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 		ctx.SetBody(bodyApiNok)
 

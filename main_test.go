@@ -46,6 +46,11 @@ func TestBuildHandlerCsrfRejectionStillGetsGatewayHeaders(t *testing.T) {
 	assert.Equal(t, fasthttp.StatusExpectationFailed, ctx.Response.StatusCode())
 	assert.Equal(t, "v1.2.3", string(ctx.Response.Header.Peek(headers.XCtGatewayVersion)))
 	assert.Equal(t, "abc123", string(ctx.Response.Header.Peek(headers.XCtGatewaySha)))
+	assert.Equal(t, "max-age=31536000; includeSubDomains", string(ctx.Response.Header.Peek(headers.StrictTransportSecurity)))
+	assert.Equal(t, "nosniff", string(ctx.Response.Header.Peek(headers.XContentTypeOptions)))
+	assert.Equal(t, "DENY", string(ctx.Response.Header.Peek(headers.XFrameOptions)))
+	assert.Equal(t, "strict-origin-when-cross-origin", string(ctx.Response.Header.Peek(headers.ReferrerPolicy)))
+	assert.Equal(t, "default-src 'none'; frame-ancestors 'none'", string(ctx.Response.Header.Peek(headers.ContentSecurityPolicy)))
 }
 
 func TestBuildHandlerCsrfDisabledStillGetsGatewayHeaders(t *testing.T) {
@@ -76,4 +81,9 @@ func TestBuildHandlerCsrfDisabledStillGetsGatewayHeaders(t *testing.T) {
 	assert.Equal(t, fasthttp.StatusOK, ctx.Response.StatusCode())
 	assert.Equal(t, "v1.2.3", string(ctx.Response.Header.Peek(headers.XCtGatewayVersion)))
 	assert.Equal(t, "abc123", string(ctx.Response.Header.Peek(headers.XCtGatewaySha)))
+	assert.Equal(t, "max-age=31536000; includeSubDomains", string(ctx.Response.Header.Peek(headers.StrictTransportSecurity)))
+	assert.Equal(t, "nosniff", string(ctx.Response.Header.Peek(headers.XContentTypeOptions)))
+	assert.Equal(t, "DENY", string(ctx.Response.Header.Peek(headers.XFrameOptions)))
+	assert.Equal(t, "strict-origin-when-cross-origin", string(ctx.Response.Header.Peek(headers.ReferrerPolicy)))
+	assert.Equal(t, "default-src 'none'; frame-ancestors 'none'", string(ctx.Response.Header.Peek(headers.ContentSecurityPolicy)))
 }

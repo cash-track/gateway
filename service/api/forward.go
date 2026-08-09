@@ -3,8 +3,9 @@ package api
 import (
 	"bytes"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/valyala/fasthttp"
 	"go.opentelemetry.io/otel/attribute"
@@ -35,6 +36,7 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 
 	// set once: the refreshed-token retry below reuses this same req
 	headers.WriteGatewayVersion(&req.Header, s.config.GitTag, s.config.GitSha)
+	headers.WriteGatewaySecret(&req.Header, s.config.GatewaySecret)
 
 	headers.CopyFromRequest(ctx, req, []string{
 		headers.AcceptLanguage,
@@ -87,14 +89,18 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		fasthttp.ReleaseResponse(resp)
 	}()
 
-	if err := s.http.Do(req, resp); err != nil {
+	start := time.Now()
+	err := s.doWithBreaker(req, resp)
+	duration := time.Since(start)
+
+	if err != nil {
 		span.RecordError(err)
 
 		return fmt.Errorf("API request error: %w", err)
 	}
 
 	logger.DebugResponse(resp, ServiceId)
-	logger.FullForwarded(ctx, req, resp, ServiceId)
+	logger.FullForwarded(ctx, resp, ServiceId, duration)
 
 	span.SetAttributes(traces.ResponseAttributes(resp)...)
 	span.SetAttributes(responseBodyAttributes(resp)...)
@@ -111,7 +117,11 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		// cookies / log the user out. Preserve the session and return a
 		// retryable status; the client can retry once the API recovers.
 		span.RecordError(err)
-		log.Printf("[%s] refresh token attempt (transient, keeping session): %s", remoteIp, err.Error())
+		slog.Warn("refresh token attempt failed, keeping session (transient)",
+			"trace_id", traces.FindTraceId(ctx),
+			"client_ip", remoteIp,
+			"error", err,
+		)
 
 		resp.Reset()
 		resp.SetStatusCode(fasthttp.StatusServiceUnavailable)
@@ -140,13 +150,21 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		defer retrySpan.End()
 
 		// execute request 2nd attempt
-		if err := s.http.Do(req, resp); err != nil {
-			retrySpan.RecordError(err)
+		retryStart := time.Now()
+		retryErr := s.doWithBreaker(req, resp)
+		retryDuration := time.Since(retryStart)
 
-			return fmt.Errorf("API request with fresh token error: %w", err)
+		if retryErr != nil {
+			retrySpan.RecordError(retryErr)
+
+			return fmt.Errorf("API request with fresh token error: %w", retryErr)
 		}
 
 		logger.DebugResponse(resp, ServiceId)
+		// Logged separately from the initial attempt above: this is a second, genuinely
+		// distinct round trip to the API (with a refreshed token), matching the separate
+		// "forward (refreshed)" trace span created for it.
+		logger.FullForwarded(ctx, resp, ServiceId, retryDuration)
 		retrySpan.SetAttributes(traces.ResponseAttributes(resp)...)
 		retrySpan.SetAttributes(responseBodyAttributes(resp)...)
 
@@ -156,7 +174,11 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		// Only seed on 2xx to avoid advancing CSRF state when the retried request fails.
 		if s.csrf != nil && resp.StatusCode() >= fasthttp.StatusOK && resp.StatusCode() < fasthttp.StatusMultipleChoices {
 			if err := s.csrf.Seed(ctx, newAuth); err != nil {
-				log.Printf("[%s] csrf seed after token refresh: %s", remoteIp, err.Error())
+				slog.Warn("csrf seed after token refresh failed",
+					"trace_id", traces.FindTraceId(ctx),
+					"client_ip", remoteIp,
+					"error", err,
+				)
 			}
 		}
 	}

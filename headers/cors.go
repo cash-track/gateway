@@ -2,7 +2,7 @@ package headers
 
 import (
 	"bytes"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/valyala/fasthttp"
@@ -31,11 +31,19 @@ var (
 		XCtApiVersion,
 		XCtApiSha,
 	}
-	CorsIgnorePaths = map[string]bool{
+	// healthPaths lists probe endpoints excluded from CORS and security response headers.
+	healthPaths = map[string]bool{
 		"/live":  true,
 		"/ready": true,
 	}
 )
+
+// isHealthPath reports whether ctx targets a health probe endpoint. Matches on
+// PathOriginal, the raw undecoded path fasthttp/router dispatches on, so an
+// encoded lookalike (a 404 to the router) isn't treated as the real probe.
+func isHealthPath(ctx *fasthttp.RequestCtx) bool {
+	return healthPaths[string(ctx.Request.URI().PathOriginal())]
+}
 
 // CorsHandler is a middleware to write default CORS headers if no forwarded.
 func CorsHandler(h fasthttp.RequestHandler) fasthttp.RequestHandler {
@@ -49,7 +57,7 @@ func CorsHandler(h fasthttp.RequestHandler) fasthttp.RequestHandler {
 }
 
 func validateCorsOrigin(ctx *fasthttp.RequestCtx) bool {
-	if _, ok := CorsIgnorePaths[string(ctx.Request.URI().Path())]; ok {
+	if isHealthPath(ctx) {
 		return false
 	}
 
@@ -57,7 +65,7 @@ func validateCorsOrigin(ctx *fasthttp.RequestCtx) bool {
 	if val := ctx.Response.Header.Peek(AccessControlAllowOrigin); val != nil {
 		// CORS headers were already configured by upstream
 		if config.Global.DebugHttp {
-			log.Printf("[%s] CORS validation for origin by upstream: %s", clientIp, val)
+			slog.Debug("CORS validation for origin by upstream", "client_ip", clientIp, "origin", string(val))
 		}
 
 		return false
@@ -67,7 +75,7 @@ func validateCorsOrigin(ctx *fasthttp.RequestCtx) bool {
 	_, ok := config.Global.CorsAllowedOrigins[origin]
 
 	if config.Global.DebugHttp {
-		log.Printf("[%s] CORS validation for origin %s by gateway: %v", clientIp, origin, ok)
+		slog.Debug("CORS validation for origin by gateway", "client_ip", clientIp, "origin", origin, "allowed", ok)
 	}
 
 	return ok
