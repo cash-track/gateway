@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/valyala/fasthttp"
@@ -44,10 +45,12 @@ func TestAuthSetHandler(t *testing.T) {
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
 	ctx.Request.Header.Set("Test", "Value")
 
+	tomorrow := time.Now().Add(time.Hour * 24).Format(time.RFC3339)
+
 	c.EXPECT().Verify(gomock.Any()).Return(true, nil)
 	s.EXPECT().ForwardRequest(gomock.Any(), nil).DoAndReturn(func(ctx *fasthttp.RequestCtx, body []byte) error {
 		ctx.Response.SetStatusCode(fasthttp.StatusOK)
-		ctx.Response.SetBodyString(`{"accessToken":"new_access_token"}`)
+		ctx.Response.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshTokenExpiredAt":"%s"}`, tomorrow))
 		return nil
 	})
 

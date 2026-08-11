@@ -7,7 +7,9 @@ import (
 )
 
 func (h *HttpHandler) Logout(ctx *fasthttp.RequestCtx) {
-	cookie.Auth{}.WriteCookie(ctx)
+	// Auth{} is never "logged" (AccessToken == ""), so this always takes the
+	// delete branch and cannot fail — error structurally impossible here.
+	_ = cookie.Auth{}.WriteCookie(ctx)
 
 	b, _ := h.newWebsiteRedirect().ToJson()
 
