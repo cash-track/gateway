@@ -62,5 +62,5 @@ func TestCopyRequestURI(t *testing.T) {
 
 	s.copyRequestURI(&src, &dest)
 
-	assert.Equal(t, "http://api.test.com/users/create%20one?one=two%203", dest.String())
+	assert.Equal(t, "http://api.test.com/v1/users/create%20one?one=two%203", dest.String())
 }
