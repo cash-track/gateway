@@ -31,11 +31,10 @@ func (s *HttpService) refreshToken(
 	s.setRequestURI(req.URI(), refreshURI)
 	req.Header.SetContentTypeBytes(headers.ContentTypeJson)
 	req.Header.SetBytesV(headers.Accept, headers.ContentTypeJson)
-	headers.WriteBearerToken(req, auth.RefreshToken)
 	headers.WriteGatewayVersion(&req.Header, s.config.GitTag, s.config.GitSha)
 	headers.WriteGatewaySecret(&req.Header, s.config.GatewaySecret)
 
-	data, _ := json.Marshal(cookie.Auth{AccessToken: auth.AccessToken})
+	data, _ := json.Marshal(cookie.Auth{RefreshToken: auth.RefreshToken})
 	req.SetBody(data)
 
 	logger.DebugRequest(req, ServiceId)
