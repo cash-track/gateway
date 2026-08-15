@@ -182,9 +182,13 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		}
 	}
 
-	// err == nil and not logged ⇒ refresh token genuinely expired/invalid.
-	// Logging out (cookie deletion) is the correct behaviour here.
-	newAuth.WriteCookie(ctx)
+	// This is also reached when newAuth is not logged (refresh token genuinely
+	// expired/invalid) ⇒ WriteCookie takes the delete branch, logging the user out.
+	if err := newAuth.WriteCookie(ctx); err != nil {
+		span.RecordError(err)
+
+		return fmt.Errorf("write auth cookie after refresh: %w", err)
+	}
 
 	return forwardResponse(ctx, resp)
 }

@@ -21,7 +21,9 @@ func (h *HttpHandler) Login(ctx *fasthttp.RequestCtx) error {
 		return fmt.Errorf("login response body invalid: %w", err)
 	}
 
-	auth.WriteCookie(ctx)
+	if err := auth.WriteCookie(ctx); err != nil {
+		return fmt.Errorf("login write cookie: %w", err)
+	}
 
 	// Seed the initial CSRF token. Non-fatal: if Redis is unavailable the user
 	// will recover automatically on their first mutation via GET /csrf.
