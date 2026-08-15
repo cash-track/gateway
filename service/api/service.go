@@ -63,7 +63,7 @@ func (s *HttpService) setRequestURI(dest *fasthttp.URI, path []byte) {
 }
 
 func (s *HttpService) copyRequestURI(src, dest *fasthttp.URI) {
-	path := strings.TrimPrefix(string(src.PathOriginal()), "/api")
+	path := "/v1" + strings.TrimPrefix(string(src.PathOriginal()), "/api")
 	s.setRequestURI(dest, []byte(path))
 	dest.SetQueryStringBytes(src.QueryString())
 }

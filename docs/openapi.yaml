@@ -22,15 +22,17 @@ info:
     - **CORS** — answers preflight `OPTIONS` requests directly against the
       `CORS_ALLOWED_ORIGINS` allow-list, and decorates actual requests with the
       appropriate `Access-Control-*` response headers
-    - **Path rewriting** — strips the `/api` prefix before forwarding to the backend
+    - **Path rewriting** — strips the `/api` prefix and adds a `/v1` prefix before forwarding
+      to the backend
 
     ## Path Rewriting
 
-    All `/api/*` paths are forwarded to the backend with the `/api` prefix removed:
+    All `/api/*` paths are forwarded to the backend with the `/api` prefix removed and a `/v1`
+    prefix added:
 
     ```
-    Gateway  /api/wallets  →  Backend  /wallets
-    Gateway  /api/auth/login  →  Backend  /auth/login
+    Gateway  /api/wallets  →  Backend  /v1/wallets
+    Gateway  /api/auth/login  →  Backend  /v1/auth/login
     ```
 
     ## Authentication
@@ -208,7 +210,7 @@ paths:
       description: |
         **Gateway-handled.** The request is:
         1. Validated against Google reCAPTCHA v3 (`X-Ct-Captcha-Challenge` header)
-        2. Forwarded to the backend `POST /auth/login`
+        2. Forwarded to the backend `POST /v1/auth/login`
         3. On success: JWT tokens are stored in `cshtrka` / `cshtrkr` cookies and a
            redirect URL pointing to the web app is returned
 
@@ -270,7 +272,7 @@ paths:
       description: |
         **Gateway-handled.** The request is:
         1. Validated against Google reCAPTCHA v3
-        2. Forwarded to the backend `POST /auth/register`
+        2. Forwarded to the backend `POST /v1/auth/register`
         3. On success: auth cookies set, redirect URL returned
 
         See `POST /api/auth/login` for the full flow description.
@@ -442,7 +444,7 @@ paths:
       summary: Initialise WebAuthn login challenge
       description: |
         **Gateway-handled (captcha only).** Verifies the reCAPTCHA challenge then proxies the
-        request to the backend `GET /auth/login/passkey/init` which returns
+        request to the backend `GET /v1/auth/login/passkey/init` which returns
         `PublicKeyCredentialRequestOptions`. The backend response is forwarded as-is.
       tags: [Auth]
       security: []
@@ -491,7 +493,7 @@ paths:
       description: |
         **Gateway-handled.** The flow:
         1. Reads the refresh token from the `cshtrkr` cookie
-        2. Forwards `POST /auth/logout` to the backend with the refresh token in the request body
+        2. Forwards `POST /v1/auth/logout` to the backend with the refresh token in the request body
         3. **Always** clears the `cshtrka` and `cshtrkr` cookies regardless of the backend response
         4. Returns a redirect URL pointing to the marketing website
 
@@ -555,8 +557,8 @@ paths:
       operationId: proxyGet
       summary: Proxy GET request to backend
       description: |
-        Forwards the request to the backend API after stripping the `/api` prefix.
-        If the user is logged in (`cshtrka` cookie present) the gateway attaches
+        Forwards the request to the backend API after stripping the `/api` prefix and
+        adding a `/v1` prefix. If the user is logged in (`cshtrka` cookie present) the gateway attaches
         `Authorization: Bearer <token>` before forwarding.
 
         **Transparent token refresh:** if the backend returns `401` and a refresh token

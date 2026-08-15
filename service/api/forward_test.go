@@ -34,7 +34,7 @@ func TestFullForwardRequestWithAuth(t *testing.T) {
 
 		assert.NotNil(t, req)
 		assert.Equal(t, fasthttp.MethodPatch, string(req.Header.Method()))
-		assert.Equal(t, fmt.Sprintf("%s%s", endpoint, "/auth/profile"), req.URI().String())
+		assert.Equal(t, fmt.Sprintf("%s%s", endpoint, "/v1/auth/profile"), req.URI().String())
 		assert.Equal(t, string(headers.ContentTypeJson), string(req.Header.ContentType()))
 		assert.Equal(t, string(headers.ContentTypeJson), string(req.Header.Peek(headers.Accept)))
 		assert.Equal(t, "10.0.0.1", string(req.Header.Peek(headers.XForwardedFor)))

@@ -15,7 +15,7 @@ import (
 	"github.com/cash-track/gateway/traces"
 )
 
-var refreshURI = []byte("/auth/refresh")
+var refreshURI = []byte("/v1/auth/refresh")
 
 func (s *HttpService) refreshToken(
 	auth cookie.Auth,
