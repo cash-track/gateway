@@ -19,7 +19,9 @@ info:
     - **Captcha verification** — validates Google reCAPTCHA v3 challenge on auth endpoints
     - **Transparent token refresh** — intercepts `401` responses, silently refreshes the token
       pair, and retries the original request
-    - **CORS** — validates `Origin` header against the allow-list and sets appropriate response headers
+    - **CORS** — answers preflight `OPTIONS` requests directly against the
+      `CORS_ALLOWED_ORIGINS` allow-list, and decorates actual requests with the
+      appropriate `Access-Control-*` response headers
     - **Path rewriting** — strips the `/api` prefix and adds a `/v1` prefix before forwarding
       to the backend
 
@@ -733,66 +735,53 @@ paths:
       operationId: proxyOptions
       summary: CORS preflight
       description: |
-        Handles CORS preflight requests. CSRF validation is bypassed for OPTIONS.
+        The gateway answers a genuine preflight request directly — routing, CSRF, captcha
+        and the backend API are not invoked. A request is a genuine preflight when it is
+        `OPTIONS` **and** carries `Access-Control-Request-Method`; an `OPTIONS` request
+        without that header is not a preflight and is forwarded to the backend like any
+        other request (see `GET`/`POST`/etc. on this path).
 
-        The gateway does **not** answer the preflight by itself: `OPTIONS` is an allowed proxy
-        method, so the request is forwarded to the backend API first and the backend's response
-        is what the client receives. The CORS layer then runs afterwards and, **only if the
-        `Origin` is in `CORS_ALLOWED_ORIGINS`**, adds the `Access-Control-*` headers and
-        overwrites the status with `200` — whatever the backend actually returned.
+        Always responds `204` with an empty body, decided purely by whether `Origin` is in
+        `CORS_ALLOWED_ORIGINS`:
 
-        The practical consequences:
-
-        - Allowed origin → always `200`, regardless of the backend's status. The backend's
-          response headers (including `X-Ct-Api-Version` / `X-Ct-Api-Sha`) are still relayed.
-        - Disallowed or missing origin → no `Access-Control-*` headers and no status override,
-          so the backend's status and body pass through unchanged.
-        - Backend unreachable → `502`, before the CORS layer has anything to overwrite.
+        - Allowed origin → `204` with the full CORS header set below, including
+          `Access-Control-Allow-Headers` reflecting whatever the browser sent in
+          `Access-Control-Request-Headers` (dynamic reflection, not a fixed list).
+        - Disallowed or missing origin → `204` with none of the `Access-Control-*` headers
+          and no `Vary`.
       tags: [Proxy]
       security: []
       responses:
-        "200":
+        "204":
           description: |
-            Preflight accepted. Note this status is imposed by the CORS layer for an allowed
-            origin and does not imply the backend returned `200`.
+            Preflight answered directly by the gateway. Header set below is present only
+            when `Origin` is in `CORS_ALLOWED_ORIGINS`; otherwise the response carries none
+            of them.
           headers:
             Access-Control-Allow-Origin:
               schema:
                 type: string
+            Vary:
+              description: "`Origin`, then `Access-Control-Request-Headers` appended."
+              schema:
+                type: string
+                example: "Origin, Access-Control-Request-Headers"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+                example: "true"
             Access-Control-Allow-Methods:
               schema:
                 type: string
                 example: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
             Access-Control-Allow-Headers:
+              description: Echoes the request's `Access-Control-Request-Headers` value verbatim.
               schema:
                 type: string
-                example: "Content-Type,X-Ct-Captcha-Challenge,*"
-            Access-Control-Allow-Credentials:
+            Access-Control-Max-Age:
               schema:
                 type: string
-                example: "true"
-            X-Ct-Gateway-Version:
-              $ref: "#/components/headers/GatewayVersion"
-            X-Ct-Gateway-Sha:
-              $ref: "#/components/headers/GatewaySha"
-            X-Ct-Api-Version:
-              $ref: "#/components/headers/ApiVersion"
-            X-Ct-Api-Sha:
-              $ref: "#/components/headers/ApiSha"
-            Strict-Transport-Security:
-              $ref: "#/components/headers/StrictTransportSecurity"
-            X-Content-Type-Options:
-              $ref: "#/components/headers/XContentTypeOptions"
-            X-Frame-Options:
-              $ref: "#/components/headers/XFrameOptions"
-            Referrer-Policy:
-              $ref: "#/components/headers/ReferrerPolicy"
-            Content-Security-Policy:
-              $ref: "#/components/headers/ContentSecurityPolicy"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
+                example: "600"
 
 # =============================================================================
 # COMPONENTS
@@ -1052,12 +1041,23 @@ components:
         X-Ct-Api-Sha:
           $ref: "#/components/headers/ApiSha"
         Access-Control-Allow-Origin:
+          description: Present only when the request's `Origin` is in `CORS_ALLOWED_ORIGINS`.
           schema:
             type: string
+        Vary:
+          description: "`Origin`, present alongside Access-Control-Allow-Origin."
+          schema:
+            type: string
+            example: "Origin"
         Access-Control-Allow-Credentials:
           schema:
             type: string
             example: "true"
+        Access-Control-Expose-Headers:
+          description: Fixed list, set by the gateway whenever Access-Control-Allow-Origin is present.
+          schema:
+            type: string
+            example: "X-Ct-Trace-Id,X-Ct-Gateway-Version,X-Ct-Gateway-Sha,X-Ct-Api-Version,X-Ct-Api-Sha"
         Strict-Transport-Security:
           $ref: "#/components/headers/StrictTransportSecurity"
         X-Content-Type-Options:

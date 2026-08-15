@@ -84,7 +84,9 @@ func TestWriteAuthCookie(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctx := fasthttp.RequestCtx{}
 
-			test.Auth.WriteCookie(&ctx)
+			err := test.Auth.WriteCookie(&ctx)
+
+			assert.NoError(t, err)
 
 			access := ctx.Response.Header.PeekCookie(AccessTokenCookieName)
 			assert.Contains(t, string(access), AccessTokenCookieName)
@@ -110,6 +112,78 @@ func TestWriteAuthCookie(t *testing.T) {
 			assert.Contains(t, string(refresh), test.ExpectedRefreshToken)
 			assert.Contains(t, string(refresh), fmt.Sprintf("expires=%s", expire))
 
+		})
+	}
+}
+
+func TestWriteAuthCookieMalformedRefreshExpiryWritesNoCookies(t *testing.T) {
+	config.Global.CookieDomain = "test.domain.com"
+	config.Global.CookieSecure = true
+
+	yesterday := time.Now().Add(-time.Hour * 24).Format(time.RFC3339)
+
+	for name, refreshTokenExpiredAt := range map[string]string{
+		"Empty":   "",
+		"Garbage": "not-a-timestamp",
+		"Past":    yesterday,
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := fasthttp.RequestCtx{}
+
+			auth := Auth{
+				AccessToken:           "123",
+				RefreshToken:          "123123",
+				RefreshTokenExpiredAt: refreshTokenExpiredAt,
+			}
+
+			err := auth.WriteCookie(&ctx)
+
+			assert.Error(t, err)
+			assert.Empty(t, ctx.Response.Header.PeekCookie(AccessTokenCookieName))
+			assert.Empty(t, ctx.Response.Header.PeekCookie(RefreshTokenCookieName))
+		})
+	}
+}
+
+func TestAuth_GetRefreshTokenExpireDate(t *testing.T) {
+	tomorrow := time.Now().Add(time.Hour * 24)
+	yesterday := time.Now().Add(-time.Hour * 24)
+
+	for name, test := range map[string]struct {
+		RefreshTokenExpiredAt string
+		ExpectError           bool
+	}{
+		"ValidFuture": {
+			RefreshTokenExpiredAt: tomorrow.Format(time.RFC3339),
+			ExpectError:           false,
+		},
+		"Empty": {
+			RefreshTokenExpiredAt: "",
+			ExpectError:           true,
+		},
+		"Garbage": {
+			RefreshTokenExpiredAt: "not-a-timestamp",
+			ExpectError:           true,
+		},
+		"Past": {
+			RefreshTokenExpiredAt: yesterday.Format(time.RFC3339),
+			ExpectError:           true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			auth := Auth{RefreshTokenExpiredAt: test.RefreshTokenExpiredAt}
+
+			expireAt, err := auth.GetRefreshTokenExpireDate()
+
+			if test.ExpectError {
+				assert.Error(t, err)
+				assert.True(t, expireAt.IsZero())
+
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.WithinDuration(t, tomorrow, expireAt, time.Second)
 		})
 	}
 }

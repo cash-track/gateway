@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -183,35 +182,31 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		}
 	}
 
-	// err == nil and not logged ⇒ refresh token genuinely expired/invalid.
-	// Logging out (cookie deletion) is the correct behaviour here.
-	newAuth.WriteCookie(ctx)
+	// This is also reached when newAuth is not logged (refresh token genuinely
+	// expired/invalid) ⇒ WriteCookie takes the delete branch, logging the user out.
+	if err := newAuth.WriteCookie(ctx); err != nil {
+		span.RecordError(err)
+
+		return fmt.Errorf("write auth cookie after refresh: %w", err)
+	}
 
 	return forwardResponse(ctx, resp)
 }
 
+// forwardResponse relays the backend's status, body and headers to the client.
+// CORS response headers are set by headers.CorsHandler, which wraps this call.
 func forwardResponse(ctx *fasthttp.RequestCtx, resp *fasthttp.Response) error {
 	ctx.SetStatusCode(resp.StatusCode())
 	ctx.SetBody(bytes.Clone(resp.Body()))
 
 	headers.CopyFromResponse(resp, ctx, []string{
-		headers.AccessControlAllowOrigin,
-		headers.AccessControlAllowMethods,
-		headers.AccessControlAllowHeaders,
-		headers.AccessControlMaxAge,
 		headers.ContentType,
 		headers.RetryAfter,
-		headers.Vary,
 		headers.XCtApiSha,
 		headers.XCtApiVersion,
 		headers.XRateLimit,
 		headers.XRateLimitRemaining,
 	})
-
-	if val := ctx.Response.Header.Peek(headers.AccessControlAllowOrigin); val != nil {
-		ctx.Response.Header.Set(headers.AccessControlAllowCredentials, "true")
-		ctx.Response.Header.Set(headers.AccessControlExposeHeaders, strings.Join(headers.CorsExposedHeaders, ","))
-	}
 
 	return nil
 }

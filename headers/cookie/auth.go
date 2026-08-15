@@ -1,6 +1,7 @@
 package cookie
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -35,16 +36,23 @@ func ReadAuthCookie(ctx *fasthttp.RequestCtx) Auth {
 	return auth
 }
 
-func (a Auth) WriteCookie(ctx *fasthttp.RequestCtx) {
+func (a Auth) WriteCookie(ctx *fasthttp.RequestCtx) error {
 	if !a.IsLogged() {
 		ctx.Response.Header.SetCookie(newCookie(AccessTokenCookieName, "", fasthttp.CookieExpireDelete))
 		ctx.Response.Header.SetCookie(newCookie(RefreshTokenCookieName, "", fasthttp.CookieExpireDelete))
 
-		return
+		return nil
 	}
 
-	ctx.Response.Header.SetCookie(newCookie(AccessTokenCookieName, a.AccessToken, a.GetRefreshTokenExpireDate()))
-	ctx.Response.Header.SetCookie(newCookie(RefreshTokenCookieName, a.RefreshToken, a.GetRefreshTokenExpireDate()))
+	expireAt, err := a.GetRefreshTokenExpireDate()
+	if err != nil {
+		return fmt.Errorf("refresh token expiry: %w", err)
+	}
+
+	ctx.Response.Header.SetCookie(newCookie(AccessTokenCookieName, a.AccessToken, expireAt))
+	ctx.Response.Header.SetCookie(newCookie(RefreshTokenCookieName, a.RefreshToken, expireAt))
+
+	return nil
 }
 
 func (a Auth) IsLogged() bool {
@@ -55,10 +63,17 @@ func (a Auth) CanRefresh() bool {
 	return a.RefreshToken != ""
 }
 
-func (a Auth) GetRefreshTokenExpireDate() time.Time {
-	t, _ := time.Parse(time.RFC3339, a.RefreshTokenExpiredAt)
+func (a Auth) GetRefreshTokenExpireDate() (time.Time, error) {
+	t, err := time.Parse(time.RFC3339, a.RefreshTokenExpiredAt)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse refresh token expiry %q: %w", a.RefreshTokenExpiredAt, err)
+	}
 
-	return t
+	if t.Before(time.Now()) {
+		return time.Time{}, fmt.Errorf("refresh token expiry %q is in the past", a.RefreshTokenExpiredAt)
+	}
+
+	return t, nil
 }
 
 func (a Auth) GetOpenTelemetryAttributes() []attribute.KeyValue {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/valyala/fasthttp"
@@ -16,6 +16,12 @@ import (
 	"github.com/cash-track/gateway/headers/cookie"
 	"github.com/cash-track/gateway/mocks"
 )
+
+// tomorrowRFC3339 returns a valid future RefreshTokenExpiredAt value for tests that
+// need refreshed auth to pass WriteCookie's expiry validation.
+func tomorrowRFC3339() string {
+	return time.Now().Add(time.Hour * 24).Format(time.RFC3339)
+}
 
 func TestFullForwardRequestWithAuth(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -220,7 +226,7 @@ func TestForwardRequestGatewaySecretHeaderPersistsAcrossRefreshRetry(t *testing.
 	// 2nd: refresh request, built with its own req in refresh_token.go
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
 
 		assert.Equal(t, "shared-secret", string(req.Header.Peek(headers.XGatewaySecret)))
 
@@ -270,7 +276,7 @@ func TestForwardRequestGatewayVersionHeadersPersistAcrossRefreshRetry(t *testing
 	// 2nd: refresh request, built with its own req in refresh_token.go
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
 
 		assert.Equal(t, "v1.2.3", string(req.Header.Peek(headers.XCtGatewayVersion)))
 		assert.Equal(t, "abc123", string(req.Header.Peek(headers.XCtGatewaySha)))
@@ -321,7 +327,7 @@ func TestForwardRequestWithAuthRefresh(t *testing.T) {
 	})
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"%s","refreshToken":"%s"}`, "new_access_token", "new_refresh_token"))
+		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"%s","refreshToken":"%s","refreshTokenExpiredAt":"%s"}`, "new_access_token", "new_refresh_token", tomorrowRFC3339()))
 		return nil
 	})
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
@@ -479,7 +485,7 @@ func TestForwardRequestWithAuthRefreshSecondFail(t *testing.T) {
 	})
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"%s","refreshToken":"%s"}`, "new_access_token", "new_refresh_token"))
+		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"%s","refreshToken":"%s","refreshTokenExpiredAt":"%s"}`, "new_access_token", "new_refresh_token", tomorrowRFC3339()))
 
 		return nil
 	})
@@ -541,7 +547,7 @@ func TestForwardRequestWithAuthRefreshSeedsCsrf(t *testing.T) {
 	// Second call: refresh endpoint returns new tokens
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
 		return nil
 	})
 	// Third call: retried original request succeeds
@@ -584,7 +590,7 @@ func TestForwardRequestWithAuthRefreshCsrfSeedError(t *testing.T) {
 	})
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
 		return nil
 	})
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
@@ -624,7 +630,7 @@ func TestForwardRequestWithAuthRefreshSecondFailNoSeed(t *testing.T) {
 	})
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
 		return nil
 	})
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).Return(fmt.Errorf("broken pipe"))
@@ -659,7 +665,7 @@ func TestForwardRequestWithAuthRefreshNon2xxNoSeed(t *testing.T) {
 	})
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
 		return nil
 	})
 	// Retried request returns 500 — Seed must NOT be called.
@@ -686,19 +692,58 @@ func TestForwardRequestWithAuthRefreshNon2xxNoSeed(t *testing.T) {
 	assert.Equal(t, fasthttp.StatusInternalServerError, ctx.Response.StatusCode())
 }
 
+// TestForwardRequestWithAuthRefreshMalformedExpiryReturnsError covers the fail-closed
+// guard: a backend refresh response with a malformed refreshTokenExpiredAt must not
+// result in a broken cookie being written. ForwardRequest must return an error instead
+// (mapped to a 502 by writeForwardError in the handler layer).
+func TestForwardRequestWithAuthRefreshMalformedExpiryReturnsError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	// 1st: original forwarded request, gets 401
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusUnauthorized)
+		return nil
+	})
+	// 2nd: refresh succeeds but the backend sent a malformed refreshTokenExpiredAt
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"not-a-timestamp"}`)
+		return nil
+	})
+	// 3rd: retried original request succeeds
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, nil, testBreaker())
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+	ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, "access_token")
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token")
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.Error(t, err)
+	assert.Empty(t, ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName))
+	assert.Empty(t, ctx.Response.Header.PeekCookie(cookie.RefreshTokenCookieName))
+}
+
 func TestForwardResponse(t *testing.T) {
 	ctx := fasthttp.RequestCtx{}
 
 	resp := fasthttp.Response{}
 	resp.SetStatusCode(fasthttp.StatusUnauthorized)
 	resp.SetBody([]byte("not allowed\n\r"))
-	resp.Header.Set(headers.AccessControlAllowOrigin, "test.com")
-	resp.Header.Set(headers.AccessControlMaxAge, "3600")
-	resp.Header.Set(headers.AccessControlAllowMethods, "GET,POST")
-	resp.Header.Set(headers.AccessControlAllowHeaders, "Content-Type,Accept-Language")
 	resp.Header.Set(headers.ContentType, "text/plain")
 	resp.Header.Set(headers.RetryAfter, "200")
-	resp.Header.Set(headers.Vary, "Content-Type,X-Rate-Limit")
 	resp.Header.Set(headers.XCtApiVersion, "v9.9.9")
 	resp.Header.Set(headers.XCtApiSha, "deadbeef")
 	resp.Header.Set(headers.XRateLimit, "123")
@@ -708,30 +753,37 @@ func TestForwardResponse(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	assert.Equal(t, "test.com", string(ctx.Response.Header.Peek(headers.AccessControlAllowOrigin)))
-	assert.Equal(t, "true", string(ctx.Response.Header.Peek(headers.AccessControlAllowCredentials)))
-	assert.Equal(t, strings.Join(headers.CorsExposedHeaders, ","), string(ctx.Response.Header.Peek(headers.AccessControlExposeHeaders)))
-	assert.Equal(t, "GET,POST", string(ctx.Response.Header.Peek(headers.AccessControlAllowMethods)))
-	assert.Equal(t, "Content-Type,Accept-Language", string(ctx.Response.Header.Peek(headers.AccessControlAllowHeaders)))
-	assert.Equal(t, "3600", string(ctx.Response.Header.Peek(headers.AccessControlMaxAge)))
 	assert.Equal(t, "text/plain", string(ctx.Response.Header.Peek(headers.ContentType)))
 	assert.Equal(t, "200", string(ctx.Response.Header.Peek(headers.RetryAfter)))
-	assert.Equal(t, "Content-Type,X-Rate-Limit", string(ctx.Response.Header.Peek(headers.Vary)))
 	assert.Equal(t, "v9.9.9", string(ctx.Response.Header.Peek(headers.XCtApiVersion)))
 	assert.Equal(t, "deadbeef", string(ctx.Response.Header.Peek(headers.XCtApiSha)))
 	assert.Equal(t, "123", string(ctx.Response.Header.Peek(headers.XRateLimit)))
 	assert.Equal(t, "2", string(ctx.Response.Header.Peek(headers.XRateLimitRemaining)))
 }
 
-func TestForwardResponseWithoutOriginSkipsCorsHeaders(t *testing.T) {
+// CORS response headers are decided entirely by headers.CorsHandler, which wraps
+// forwardResponse's caller. The PHP API never sends Access-Control-*/Vary anymore, but
+// even if a backend response somehow contained them, forwardResponse must not relay
+// them — there must be exactly one place deciding CORS response headers.
+func TestForwardResponseDoesNotRelayCorsHeadersFromBackend(t *testing.T) {
 	ctx := fasthttp.RequestCtx{}
 
 	resp := fasthttp.Response{}
 	resp.SetStatusCode(fasthttp.StatusOK)
+	resp.Header.Set(headers.AccessControlAllowOrigin, "test.com")
+	resp.Header.Set(headers.AccessControlAllowMethods, "GET,POST")
+	resp.Header.Set(headers.AccessControlAllowHeaders, "Content-Type,Accept-Language")
+	resp.Header.Set(headers.AccessControlMaxAge, "3600")
+	resp.Header.Set(headers.Vary, "Content-Type,X-Rate-Limit")
 
 	err := forwardResponse(&ctx, &resp)
 
 	assert.NoError(t, err)
+	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlAllowOrigin))
+	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlAllowMethods))
+	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlAllowHeaders))
+	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlMaxAge))
+	assert.Empty(t, ctx.Response.Header.Peek(headers.Vary))
 	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlAllowCredentials))
 	assert.Empty(t, ctx.Response.Header.Peek(headers.AccessControlExposeHeaders))
 }

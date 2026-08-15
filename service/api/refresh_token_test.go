@@ -38,8 +38,8 @@ func TestRefreshTokenOk(t *testing.T) {
 		assert.Equal(t, fmt.Sprintf("%s%s", endpoint, refreshURI), req.URI().String())
 		assert.Equal(t, string(headers.ContentTypeJson), string(req.Header.ContentType()))
 		assert.Equal(t, string(headers.ContentTypeJson), string(req.Header.Peek(headers.Accept)))
-		assert.Equal(t, fmt.Sprintf("Bearer %s", oldRefreshToken), string(req.Header.Peek(headers.Authorization)))
-		assert.Equal(t, fmt.Sprintf(`{"accessToken":"%s"}`, oldAccessToken), string(req.Body()))
+		assert.Empty(t, req.Header.Peek(headers.Authorization))
+		assert.Equal(t, fmt.Sprintf(`{"refreshToken":"%s"}`, oldRefreshToken), string(req.Body()))
 		assert.Empty(t, req.Header.Peek(headers.XCtGatewayVersion))
 		assert.Empty(t, req.Header.Peek(headers.XCtGatewaySha))
 
