@@ -57,6 +57,20 @@ func (mr *HttpRetryClientMockMockRecorder) Do(req, resp any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Do", reflect.TypeOf((*HttpRetryClientMock)(nil).Do), req, resp)
 }
 
+// DoTimeout mocks base method.
+func (m *HttpRetryClientMock) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DoTimeout", req, resp, timeout)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DoTimeout indicates an expected call of DoTimeout.
+func (mr *HttpRetryClientMockMockRecorder) DoTimeout(req, resp, timeout any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DoTimeout", reflect.TypeOf((*HttpRetryClientMock)(nil).DoTimeout), req, resp, timeout)
+}
+
 // DoWithRetry mocks base method.
 func (m *HttpRetryClientMock) DoWithRetry(req *fasthttp.Request, resp *fasthttp.Response, attempts uint) error {
 	m.ctrl.T.Helper()

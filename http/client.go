@@ -14,6 +14,9 @@ const (
 
 type Client interface {
 	Do(req *fasthttp.Request, resp *fasthttp.Response) error
+	// DoTimeout bounds one call by a single deadline, overriding ReadTimeout/WriteTimeout
+	// for that call only — doesn't mutate client state, so it's safe alongside Do.
+	DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error
 	WithReadTimeout(timeout time.Duration) Client
 	WithWriteTimeout(timeout time.Duration) Client
 }

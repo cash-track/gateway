@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/valyala/fasthttp"
@@ -29,27 +30,28 @@ func TestRefreshTokenOk(t *testing.T) {
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
 	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"%s","refreshToken":"%s"}`, newAccessToken, newRefreshToken))
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(fmt.Sprintf(`{"accessToken":"%s","refreshToken":"%s"}`, newAccessToken, newRefreshToken))
 
-		assert.NotNil(t, req)
-		assert.Equal(t, fasthttp.MethodPost, string(req.Header.Method()))
-		assert.Equal(t, fmt.Sprintf("%s%s", endpoint, refreshURI), req.URI().String())
-		assert.Equal(t, string(headers.ContentTypeJson), string(req.Header.ContentType()))
-		assert.Equal(t, string(headers.ContentTypeJson), string(req.Header.Peek(headers.Accept)))
-		assert.Empty(t, req.Header.Peek(headers.Authorization))
-		assert.Equal(t, fmt.Sprintf(`{"refreshToken":"%s"}`, oldRefreshToken), string(req.Body()))
-		assert.Empty(t, req.Header.Peek(headers.XCtGatewayVersion))
-		assert.Empty(t, req.Header.Peek(headers.XCtGatewaySha))
+			assert.NotNil(t, req)
+			assert.Equal(t, fasthttp.MethodPost, string(req.Header.Method()))
+			assert.Equal(t, fmt.Sprintf("%s%s", endpoint, refreshURI), req.URI().String())
+			assert.Equal(t, string(headers.ContentTypeJson), string(req.Header.ContentType()))
+			assert.Equal(t, string(headers.ContentTypeJson), string(req.Header.Peek(headers.Accept)))
+			assert.Empty(t, req.Header.Peek(headers.Authorization))
+			assert.Equal(t, fmt.Sprintf(`{"refreshToken":"%s"}`, oldRefreshToken), string(req.Body()))
+			assert.Empty(t, req.Header.Peek(headers.XCtGatewayVersion))
+			assert.Empty(t, req.Header.Peek(headers.XCtGatewaySha))
 
-		return nil
-	})
+			return nil
+		})
 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	auth := cookie.Auth{
 		RefreshToken: oldRefreshToken,
@@ -70,22 +72,23 @@ func TestRefreshTokenSetsGatewayVersionHeaders(t *testing.T) {
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
 	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
 
-		assert.Equal(t, "v1.2.3", string(req.Header.Peek(headers.XCtGatewayVersion)))
-		assert.Equal(t, "abc123", string(req.Header.Peek(headers.XCtGatewaySha)))
+			assert.Equal(t, "v1.2.3", string(req.Header.Peek(headers.XCtGatewayVersion)))
+			assert.Equal(t, "abc123", string(req.Header.Peek(headers.XCtGatewaySha)))
 
-		return nil
-	})
+			return nil
+		})
 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
 		GitTag: "v1.2.3",
 		GitSha: "abc123",
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	auth := cookie.Auth{RefreshToken: "refresh_token", AccessToken: "access_token"}
 
@@ -101,20 +104,21 @@ func TestRefreshTokenSetsGatewaySecretHeader(t *testing.T) {
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
 	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token"}`)
 
-		assert.Equal(t, "shared-secret", string(req.Header.Peek(headers.XGatewaySecret)))
+			assert.Equal(t, "shared-secret", string(req.Header.Peek(headers.XGatewaySecret)))
 
-		return nil
-	})
+			return nil
+		})
 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI:        apiUrl,
 		GatewaySecret: "shared-secret",
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	auth := cookie.Auth{RefreshToken: "refresh_token", AccessToken: "access_token"}
 
@@ -130,17 +134,18 @@ func TestRefreshTokenFail(t *testing.T) {
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
 	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusInternalServerError)
-		resp.SetBodyString(`{"error":"user deleted"}`)
-		assert.NotNil(t, req)
-		return nil
-	})
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusInternalServerError)
+			resp.SetBodyString(`{"error":"user deleted"}`)
+			assert.NotNil(t, req)
+			return nil
+		})
 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	auth := cookie.Auth{}
 
@@ -157,12 +162,12 @@ func TestRefreshTokenError(t *testing.T) {
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
 	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).Return(fmt.Errorf("context cancelled"))
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).Return(fmt.Errorf("context cancelled"))
 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	auth := cookie.Auth{}
 
@@ -179,17 +184,18 @@ func TestRefreshTokenErrorBadResponse(t *testing.T) {
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
 	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString("{")
-		assert.NotNil(t, req)
-		return nil
-	})
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString("{")
+			assert.NotNil(t, req)
+			return nil
+		})
 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	auth := cookie.Auth{}
 
@@ -206,17 +212,18 @@ func TestRefreshTokenErrorLoggedOff(t *testing.T) {
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
 	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
 	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusUnauthorized)
-		resp.SetBodyString(`{"message":"refresh token expired"}`)
-		assert.NotNil(t, req)
-		return nil
-	})
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusUnauthorized)
+			resp.SetBodyString(`{"message":"refresh token expired"}`)
+			assert.NotNil(t, req)
+			return nil
+		})
 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	auth := cookie.Auth{}
 

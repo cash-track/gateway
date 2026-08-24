@@ -59,7 +59,7 @@ func (s *HttpService) refreshToken(
 	defer span.End()
 
 	newAuth := cookie.Auth{}
-	err := s.doWithBreaker(req, resp)
+	err := s.doWithBreakerTimeout(req, resp, refreshHttpTimeout)
 	if err != nil {
 		span.RecordError(err)
 

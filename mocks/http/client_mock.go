@@ -56,6 +56,20 @@ func (mr *ClientMockMockRecorder) Do(req, resp any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Do", reflect.TypeOf((*ClientMock)(nil).Do), req, resp)
 }
 
+// DoTimeout mocks base method.
+func (m *ClientMock) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DoTimeout", req, resp, timeout)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DoTimeout indicates an expected call of DoTimeout.
+func (mr *ClientMockMockRecorder) DoTimeout(req, resp, timeout any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DoTimeout", reflect.TypeOf((*ClientMock)(nil).DoTimeout), req, resp, timeout)
+}
+
 // WithReadTimeout mocks base method.
 func (m *ClientMock) WithReadTimeout(timeout time.Duration) http.Client {
 	m.ctrl.T.Helper()

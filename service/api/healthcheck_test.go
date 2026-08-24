@@ -39,7 +39,7 @@ func TestHealthcheckOk(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 	err := s.Healthcheck()
 
 	assert.NoError(t, err)
@@ -65,7 +65,7 @@ func TestHealthcheckSetsGatewayVersionHeaders(t *testing.T) {
 		ApiURI: apiUrl,
 		GitTag: "v1.2.3",
 		GitSha: "abc123",
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 	err := s.Healthcheck()
 
 	assert.NoError(t, err)
@@ -89,7 +89,7 @@ func TestHealthcheckSetsGatewaySecretHeader(t *testing.T) {
 	s := NewHttp(h, config.Config{
 		ApiURI:        apiUrl,
 		GatewaySecret: "shared-secret",
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 	err := s.Healthcheck()
 
 	assert.NoError(t, err)
@@ -112,7 +112,7 @@ func TestHealthcheckOmitsGatewaySecretHeaderWhenEmpty(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 	err := s.Healthcheck()
 
 	assert.NoError(t, err)
@@ -133,7 +133,7 @@ func TestHealthcheckFail(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 	err := s.Healthcheck()
 
 	assert.Error(t, err)
@@ -150,7 +150,7 @@ func TestHealthcheckError(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 	err := s.Healthcheck()
 
 	assert.Error(t, err)

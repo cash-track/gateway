@@ -20,3 +20,5 @@ vendor/
 .env
 
 certs
+
+.mcp.json

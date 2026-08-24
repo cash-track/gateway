@@ -21,6 +21,7 @@ import (
 	apiHandler "github.com/cash-track/gateway/router/api"
 	csrfHandler "github.com/cash-track/gateway/router/csrf"
 	apiService "github.com/cash-track/gateway/service/api"
+	"github.com/cash-track/gateway/service/api/refresh"
 	"github.com/cash-track/gateway/traces"
 )
 
@@ -53,11 +54,12 @@ func main() {
 	csrf := csrfHandler.NewRedisHandler(redisClient, jwksProvider)
 	breaker := apiService.NewBreaker()
 	apiService.RegisterBreakerMetrics(breaker)
+	refreshCoordinator := refresh.NewRedis(redisClient, apiService.RefreshLockTTL())
 
 	r := router.New(
 		apiHandler.NewHttp(
 			config.Global,
-			apiService.NewHttp(retryhttp.NewFastHttpRetryClient(), config.Global, csrf, breaker),
+			apiService.NewHttp(retryhttp.NewFastHttpRetryClient(), config.Global, csrf, breaker, refreshCoordinator),
 			captcha.NewGoogleReCaptchaProvider(retryhttp.NewFastHttpRetryClient(), config.Global),
 			csrf,
 		),

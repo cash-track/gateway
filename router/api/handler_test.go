@@ -18,6 +18,7 @@ import (
 	"github.com/cash-track/gateway/headers/cookie"
 	"github.com/cash-track/gateway/mocks"
 	"github.com/cash-track/gateway/service/api"
+	"github.com/cash-track/gateway/service/api/refresh"
 )
 
 // setTestLogger redirects slog.Default() to a buffer, restored on cleanup.
@@ -214,7 +215,7 @@ func TestAuthResetHandlerBackendRateLimited(t *testing.T) {
 	})
 
 	apiUrl, _ := url.Parse("https://backend.test.com")
-	svc := api.NewHttp(httpClient, config.Config{ApiURI: apiUrl}, nil, api.NewBreaker())
+	svc := api.NewHttp(httpClient, config.Config{ApiURI: apiUrl}, nil, api.NewBreaker(), refresh.NewRedis(nil, 0))
 	h := NewHttp(config.Config{}, svc, c, &mockCSRFSeeder{})
 
 	uri := &fasthttp.URI{}
