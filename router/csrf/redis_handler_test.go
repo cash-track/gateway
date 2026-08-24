@@ -187,7 +187,7 @@ func TestHandler(t *testing.T) {
 
 			handlersExecuted := false
 
-			handler := NewRedisHandler(client)
+			handler := NewRedisHandler(client, unloadedJwksProvider())
 			handler.Handler(func(ctx *fasthttp.RequestCtx) {
 				handlersExecuted = true
 				if test.innerHandler != nil {
@@ -241,7 +241,7 @@ func TestHandlerLogsTokenMismatchWithoutLeakingTokenValues(t *testing.T) {
 	key := fmt.Sprintf("%s:%d:%d", keyPrefix, 123987, 987654321)
 	mock.ExpectGet(key).SetVal(storedToken)
 
-	handler := NewRedisHandler(client)
+	handler := NewRedisHandler(client, unloadedJwksProvider())
 	handler.Handler(func(ctx *fasthttp.RequestCtx) {})(&ctx)
 
 	logs := output.String()
@@ -323,7 +323,7 @@ func TestRotateTokenHandler(t *testing.T) {
 
 			test.setup(mock)
 
-			handler := NewRedisHandler(client)
+			handler := NewRedisHandler(client, unloadedJwksProvider())
 			handler.RotateTokenHandler(test.request)
 
 			if test.expectRotate {
@@ -421,11 +421,12 @@ func TestGetUserContextFromAccessToken(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			handler := NewRedisHandler(nil, unloadedJwksProvider())
 			if test.expectPanic {
-				_, _ = getUserContextFromAccessToken(test.token)
+				_, _ = handler.getUserContextFromAccessToken(test.token)
 				return
 			}
-			ctx, err := getUserContextFromAccessToken(test.token)
+			ctx, err := handler.getUserContextFromAccessToken(test.token)
 			if test.expectError {
 				assert.Error(t, err)
 			} else {
@@ -501,7 +502,7 @@ func TestSeed(t *testing.T) {
 			test.setup(mock)
 
 			ctx := fasthttp.RequestCtx{}
-			handler := NewRedisHandler(client)
+			handler := NewRedisHandler(client, unloadedJwksProvider())
 			err := handler.Seed(&ctx, test.auth)
 
 			if test.expectError {

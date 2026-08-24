@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/cash-track/gateway/headers/cookie"
+	"github.com/cash-track/gateway/jwks"
 	"github.com/cash-track/gateway/router/response"
 	"github.com/cash-track/gateway/traces"
 	"github.com/cash-track/gateway/traces/semconv"
@@ -44,6 +45,13 @@ var csrfValidationFailedOpenTotal = promauto.NewCounter(prometheus.CounterOpts{
 	Subsystem: metricsCsrfSubsys,
 	Name:      "validation_failed_open_total",
 	Help:      "CSRF validations that failed open because Redis was unreachable (not a missing/expired token).",
+})
+
+var csrfSignatureVerificationFailOpenTotal = promauto.NewCounter(prometheus.CounterOpts{
+	Namespace: metricsNamespace,
+	Subsystem: metricsCsrfSubsys,
+	Name:      "signature_verification_fail_open_total",
+	Help:      "Access tokens accepted without RS256 signature verification because no JWKS key material is loaded.",
 })
 
 // csrfRedisUp is updated as requests flow through, not by a dedicated health check.
@@ -77,22 +85,6 @@ type userContext struct {
 	err     error
 }
 
-func newUserContext(cookie cookie.CSRF) userContext {
-	ctx, err := getUserContextFromAccessToken(cookie.Auth.AccessToken)
-	userCtx := userContext{
-		cookie:  cookie,
-		context: ctx,
-		isValid: true,
-	}
-
-	if err != nil {
-		userCtx.isValid = false
-		userCtx.err = err
-	}
-
-	return userCtx
-}
-
 func (c userContext) GetOpenTelemetryAttributes() []attribute.KeyValue {
 	v := []attribute.KeyValue{
 		attribute.String(semconv.CashTrackCSRFContextKey, c.context),
@@ -108,11 +100,13 @@ func (c userContext) GetOpenTelemetryAttributes() []attribute.KeyValue {
 
 type RedisHandler struct {
 	client *redis.Client
+	jwks   jwks.Provider
 }
 
-func NewRedisHandler(client *redis.Client) *RedisHandler {
+func NewRedisHandler(client *redis.Client, jwksProvider jwks.Provider) *RedisHandler {
 	return &RedisHandler{
 		client: client,
+		jwks:   jwksProvider,
 	}
 }
 
@@ -135,7 +129,7 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 		)
 		defer span.End()
 
-		userCtx := newUserContext(cookie.ReadCSRFCookie(ctx))
+		userCtx := r.newUserContext(cookie.ReadCSRFCookie(ctx))
 		span.SetAttributes(traces.AttributesGetter(userCtx)...)
 
 		if err := r.validateCsrfRequest(spanCtx, userCtx, method); err != nil {
@@ -187,7 +181,7 @@ func (r *RedisHandler) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
 	)
 	defer span.End()
 
-	userCtx := newUserContext(cookie.ReadCSRFCookie(ctx))
+	userCtx := r.newUserContext(cookie.ReadCSRFCookie(ctx))
 	span.SetAttributes(traces.AttributesGetter(userCtx)...)
 
 	if !userCtx.cookie.Auth.IsLogged() {
@@ -230,7 +224,7 @@ func (r *RedisHandler) Seed(ctx *fasthttp.RequestCtx, auth cookie.Auth) error {
 	defer span.End()
 
 	csrfCookie := cookie.CSRF{Auth: auth}
-	userCtx := newUserContext(csrfCookie)
+	userCtx := r.newUserContext(csrfCookie)
 	if userCtx.err != nil {
 		span.RecordError(userCtx.err)
 		span.SetStatus(codes.Error, "invalid token")
@@ -324,10 +318,29 @@ func generateNewToken() string {
 	return token.String()
 }
 
-func getUserContextFromAccessToken(accessToken string) (string, error) {
+func (r *RedisHandler) newUserContext(cookie cookie.CSRF) userContext {
+	ctx, err := r.getUserContextFromAccessToken(cookie.Auth.AccessToken)
+	userCtx := userContext{
+		cookie:  cookie,
+		context: ctx,
+		isValid: true,
+	}
+
+	if err != nil {
+		userCtx.isValid = false
+		userCtx.err = err
+	}
+
+	return userCtx
+}
+
+// getUserContextFromAccessToken derives the "{sub}:{iat}" CSRF context from the access
+// token. Unverified, its claims are attacker-controlled and can be used to rotate or
+// poison another user's CSRF entry in Redis.
+func (r *RedisHandler) getUserContextFromAccessToken(accessToken string) (string, error) {
 	defer func() {
-		if r := recover(); r != nil {
-			slog.Error("JWT decoding recovered from panic", "error", r)
+		if rec := recover(); rec != nil {
+			slog.Error("JWT decoding recovered from panic", "error", rec)
 		}
 	}()
 
@@ -335,16 +348,66 @@ func getUserContextFromAccessToken(accessToken string) (string, error) {
 		return "", fmt.Errorf("access token is empty")
 	}
 
-	token, _, err := jwt.NewParser().ParseUnverified(accessToken, jwt.MapClaims{})
-	if err != nil || token == nil {
-		return "", fmt.Errorf("could not parse access token")
+	claims, err := r.parseClaims(accessToken)
+	if err != nil {
+		return "", err
 	}
 
-	var claims jwt.MapClaims
-	if c, ok := token.Claims.(jwt.MapClaims); ok {
-		claims = c
+	return extractUserContext(claims)
+}
+
+// parseClaims verifies the token's RS256 signature against the in-memory JWKS key set.
+// With no key material loaded at all it fails open to an unverified decode, so the
+// gateway keeps working against an HS256-configured API.
+//
+// Claims validation is intentionally OFF: this handler runs before the proxy, and the
+// proxy is what triggers token refresh on a 401 from the API. Rejecting an expired but
+// genuine token here would lock the user out until the cookie expires. The API enforces
+// expiry downstream.
+func (r *RedisHandler) parseClaims(accessToken string) (jwt.MapClaims, error) {
+	if r.jwks == nil || !r.jwks.Loaded() {
+		slog.Warn("CSRF: no JWKS key material loaded, accepting access token without signature verification")
+		csrfSignatureVerificationFailOpenTotal.Inc()
+
+		return parseUnverifiedClaims(accessToken)
 	}
 
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}), jwt.WithoutClaimsValidation())
+
+	// claims is a map, so ParseWithClaims decodes into it in place.
+	claims := jwt.MapClaims{}
+	if _, err := parser.ParseWithClaims(accessToken, claims, r.keyfunc); err != nil {
+		return nil, fmt.Errorf("access token signature verification failed: %w", err)
+	}
+
+	return claims, nil
+}
+
+// keyfunc resolves the token's "kid" header against the in-memory JWKS set. The token
+// never steers the signing method: jwt.WithValidMethods pinned it to RS256 beforehand.
+func (r *RedisHandler) keyfunc(token *jwt.Token) (interface{}, error) {
+	kid, ok := token.Header["kid"].(string)
+	if !ok || kid == "" {
+		return nil, fmt.Errorf("access token missing kid header")
+	}
+
+	if key, ok := r.jwks.Key(kid); ok {
+		return key, nil
+	}
+
+	return nil, fmt.Errorf("access token kid not found in current key set")
+}
+
+func parseUnverifiedClaims(accessToken string) (jwt.MapClaims, error) {
+	claims := jwt.MapClaims{}
+	if _, _, err := jwt.NewParser().ParseUnverified(accessToken, claims); err != nil {
+		return nil, fmt.Errorf("could not parse access token")
+	}
+
+	return claims, nil
+}
+
+func extractUserContext(claims jwt.MapClaims) (string, error) {
 	var userId string
 	var issuedAt string
 

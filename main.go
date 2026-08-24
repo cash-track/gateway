@@ -15,6 +15,7 @@ import (
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers"
 	"github.com/cash-track/gateway/http/retryhttp"
+	"github.com/cash-track/gateway/jwks"
 	"github.com/cash-track/gateway/logger"
 	"github.com/cash-track/gateway/router"
 	apiHandler "github.com/cash-track/gateway/router/api"
@@ -45,8 +46,11 @@ func main() {
 		defer tracerClose()
 	}
 
+	jwksProvider := jwks.NewHttp(retryhttp.NewFastHttpRetryClient(), config.Global)
+	jwksProvider.Start(ctx)
+
 	redisClient := getRedisClient()
-	csrf := csrfHandler.NewRedisHandler(redisClient)
+	csrf := csrfHandler.NewRedisHandler(redisClient, jwksProvider)
 	breaker := apiService.NewBreaker()
 	apiService.RegisterBreakerMetrics(breaker)
 
