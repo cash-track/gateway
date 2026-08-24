@@ -34,7 +34,7 @@ func newTestService(t *testing.T, breaker *gobreaker.CircuitBreaker[struct{}]) (
 	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
 
 	apiUrl, _ := url.Parse(endpoint)
-	s := NewHttp(h, config.Config{ApiURI: apiUrl}, nil, breaker)
+	s := NewHttp(h, config.Config{ApiURI: apiUrl}, nil, breaker, testCoordinator())
 
 	return s, h
 }

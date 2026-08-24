@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log/slog"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/cash-track/gateway/headers"
 	"github.com/cash-track/gateway/headers/cookie"
 	"github.com/cash-track/gateway/logger"
+	"github.com/cash-track/gateway/service/api/refresh"
 	"github.com/cash-track/gateway/traces"
 )
 
@@ -108,8 +110,28 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		return forwardResponse(ctx, resp)
 	}
 
-	// perform refresh token
-	newAuth, err := s.refreshToken(auth, spanCtx, ctx)
+	// Coalesced: only the leader for this refresh token actually calls the API,
+	// concurrent callers share its result. CSRF is seeded inside the closure so it
+	// runs once per actual refresh, not once per waiter.
+	refreshKey := refresh.Key(auth.RefreshToken)
+	newAuth, err := s.refresh.Do(spanCtx, refreshKey, func(refreshCtx context.Context) (cookie.Auth, error) {
+		newAuth, err := s.refreshToken(auth, refreshCtx, ctx)
+		if err != nil {
+			return newAuth, err
+		}
+
+		if s.csrf != nil && newAuth.IsLogged() {
+			if err := s.csrf.Seed(ctx, newAuth); err != nil {
+				slog.Warn("csrf seed after token refresh failed",
+					"trace_id", traces.FindTraceId(ctx),
+					"client_ip", remoteIp,
+					"error", err,
+				)
+			}
+		}
+
+		return newAuth, nil
+	})
 	if err != nil {
 		// Transient failure: could not reach the API or it returned a non-401
 		// (e.g. 5xx). The refresh token may still be valid, so DO NOT delete
@@ -166,20 +188,6 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		logger.FullForwarded(ctx, resp, ServiceId, retryDuration)
 		retrySpan.SetAttributes(traces.ResponseAttributes(resp)...)
 		retrySpan.SetAttributes(responseBodyAttributes(resp)...)
-
-		// Seed a fresh CSRF token keyed to the new access token's iat so the
-		// next mutating request is not rejected with 417. Non-fatal: the user
-		// can recover via GET /csrf if Redis is temporarily unavailable.
-		// Only seed on 2xx to avoid advancing CSRF state when the retried request fails.
-		if s.csrf != nil && resp.StatusCode() >= fasthttp.StatusOK && resp.StatusCode() < fasthttp.StatusMultipleChoices {
-			if err := s.csrf.Seed(ctx, newAuth); err != nil {
-				slog.Warn("csrf seed after token refresh failed",
-					"trace_id", traces.FindTraceId(ctx),
-					"client_ip", remoteIp,
-					"error", err,
-				)
-			}
-		}
 	}
 
 	// This is also reached when newAuth is not logged (refresh token genuinely

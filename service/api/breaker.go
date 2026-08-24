@@ -12,6 +12,18 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// errBreakerTerms centralizes the breaker's transport-vs-rejected error distinction so
+// both doWithBreaker and doWithBreakerTimeout apply it identically.
+func errBreakerTerms(err error) error {
+	if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
+		breakerRejectedTotal.Inc()
+
+		return ErrCircuitOpen
+	}
+
+	return err
+}
+
 const (
 	breakerMaxRequests = 5
 	// Zero keeps failures counted across the whole closed state. A windowed reset would
@@ -71,18 +83,27 @@ func RegisterBreakerMetrics(breaker *gobreaker.CircuitBreaker[struct{}]) {
 	})
 }
 
-// doWithBreaker runs the API call through the breaker. Transport errors pass through
-// unwrapped; a rejected call yields ErrCircuitOpen.
+// doWithBreaker runs the API call through the breaker using the shared client's
+// configured (forwarding-sized) timeouts and retry policy. Transport errors pass
+// through unwrapped; a rejected call yields ErrCircuitOpen.
 func (s *HttpService) doWithBreaker(req *fasthttp.Request, resp *fasthttp.Response) error {
 	_, err := s.breaker.Execute(func() (struct{}, error) {
 		return struct{}{}, s.http.Do(req, resp)
 	})
 
-	if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
-		breakerRejectedTotal.Inc()
+	return errBreakerTerms(err)
+}
 
-		return ErrCircuitOpen
-	}
+// doWithBreakerTimeout is doWithBreaker with a call-specific deadline instead of the
+// shared client's configured timeouts, and no retry (DoTimeout is always a single shot).
+func (s *HttpService) doWithBreakerTimeout(
+	req *fasthttp.Request,
+	resp *fasthttp.Response,
+	timeout time.Duration,
+) error {
+	_, err := s.breaker.Execute(func() (struct{}, error) {
+		return struct{}{}, s.http.DoTimeout(req, resp, timeout)
+	})
 
-	return err
+	return errBreakerTerms(err)
 }

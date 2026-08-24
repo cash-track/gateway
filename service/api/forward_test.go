@@ -1,9 +1,12 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,7 +17,10 @@ import (
 	"github.com/cash-track/gateway/config"
 	"github.com/cash-track/gateway/headers"
 	"github.com/cash-track/gateway/headers/cookie"
+	"github.com/cash-track/gateway/http"
+	"github.com/cash-track/gateway/http/retryhttp"
 	"github.com/cash-track/gateway/mocks"
+	"github.com/cash-track/gateway/traces"
 )
 
 // tomorrowRFC3339 returns a valid future RefreshTokenExpiredAt value for tests that
@@ -47,7 +53,7 @@ func TestFullForwardRequestWithAuth(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	uri := &fasthttp.URI{}
 	_ = uri.Parse(nil, []byte("https://gateway.test.com/api/auth/profile"))
@@ -83,7 +89,7 @@ func TestForwardRequestWithBodyOverride(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
@@ -114,7 +120,7 @@ func TestForwardRequestSetsGatewayVersionHeaders(t *testing.T) {
 		ApiURI: apiUrl,
 		GitTag: "v1.2.3",
 		GitSha: "abc123",
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -142,7 +148,7 @@ func TestForwardRequestOmitsGatewayVersionHeadersWhenEmpty(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -170,7 +176,7 @@ func TestForwardRequestSetsGatewaySecretHeader(t *testing.T) {
 	s := NewHttp(h, config.Config{
 		ApiURI:        apiUrl,
 		GatewaySecret: "shared-secret",
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -197,7 +203,7 @@ func TestForwardRequestOmitsGatewaySecretHeaderWhenEmpty(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -224,14 +230,15 @@ func TestForwardRequestGatewaySecretHeaderPersistsAcrossRefreshRetry(t *testing.
 		return nil
 	})
 	// 2nd: refresh request, built with its own req in refresh_token.go
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
 
-		assert.Equal(t, "shared-secret", string(req.Header.Peek(headers.XGatewaySecret)))
+			assert.Equal(t, "shared-secret", string(req.Header.Peek(headers.XGatewaySecret)))
 
-		return nil
-	})
+			return nil
+		})
 	// 3rd: retry, reusing the same req as the 1st
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
@@ -245,7 +252,7 @@ func TestForwardRequestGatewaySecretHeaderPersistsAcrossRefreshRetry(t *testing.
 	s := NewHttp(h, config.Config{
 		ApiURI:        apiUrl,
 		GatewaySecret: "shared-secret",
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -274,15 +281,16 @@ func TestForwardRequestGatewayVersionHeadersPersistAcrossRefreshRetry(t *testing
 		return nil
 	})
 	// 2nd: refresh request, built with its own req in refresh_token.go
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
 
-		assert.Equal(t, "v1.2.3", string(req.Header.Peek(headers.XCtGatewayVersion)))
-		assert.Equal(t, "abc123", string(req.Header.Peek(headers.XCtGatewaySha)))
+			assert.Equal(t, "v1.2.3", string(req.Header.Peek(headers.XCtGatewayVersion)))
+			assert.Equal(t, "abc123", string(req.Header.Peek(headers.XCtGatewaySha)))
 
-		return nil
-	})
+			return nil
+		})
 	// 3rd: retry, reusing the same req as the 1st
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
@@ -298,7 +306,7 @@ func TestForwardRequestGatewayVersionHeadersPersistAcrossRefreshRetry(t *testing
 		ApiURI: apiUrl,
 		GitTag: "v1.2.3",
 		GitSha: "abc123",
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -325,11 +333,12 @@ func TestForwardRequestWithAuthRefresh(t *testing.T) {
 
 		return nil
 	})
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"%s","refreshToken":"%s","refreshTokenExpiredAt":"%s"}`, "new_access_token", "new_refresh_token", tomorrowRFC3339()))
-		return nil
-	})
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(fmt.Sprintf(`{"accessToken":"%s","refreshToken":"%s","refreshTokenExpiredAt":"%s"}`, "new_access_token", "new_refresh_token", tomorrowRFC3339()))
+			return nil
+		})
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
 
@@ -343,7 +352,7 @@ func TestForwardRequestWithAuthRefresh(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -374,15 +383,16 @@ func TestForwardRequestWithAuthRefreshExpiredLogsOut(t *testing.T) {
 	})
 	// Refresh call returns a clean 401: the refresh token is genuinely
 	// expired/invalid, so logging out (cookie deletion) is correct.
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusUnauthorized)
-		return nil
-	})
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusUnauthorized)
+			return nil
+		})
 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -410,12 +420,12 @@ func TestForwardRequestWithAuthRefreshTransientKeepsSession(t *testing.T) {
 	})
 	// Refresh call hits a transport error: the refresh token may still be
 	// valid, so the session must be preserved (no cookie deletion).
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).Return(fmt.Errorf("broken pipe"))
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).Return(fmt.Errorf("broken pipe"))
 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -444,15 +454,16 @@ func TestForwardRequestWithAuthRefreshApi5xxKeepsSession(t *testing.T) {
 	})
 	// Refresh call returns a non-401 unexpected status (5xx): refresh_token.go
 	// surfaces this as err != nil, so the session must be preserved.
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusInternalServerError)
-		return nil
-	})
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusInternalServerError)
+			return nil
+		})
 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -483,12 +494,13 @@ func TestForwardRequestWithAuthRefreshSecondFail(t *testing.T) {
 
 		return nil
 	})
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"%s","refreshToken":"%s","refreshTokenExpiredAt":"%s"}`, "new_access_token", "new_refresh_token", tomorrowRFC3339()))
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(fmt.Sprintf(`{"accessToken":"%s","refreshToken":"%s","refreshTokenExpiredAt":"%s"}`, "new_access_token", "new_refresh_token", tomorrowRFC3339()))
 
-		return nil
-	})
+			return nil
+		})
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		assert.NotNil(t, req)
 		assert.Equal(t, fasthttp.MethodGet, string(req.Header.Method()))
@@ -500,7 +512,7 @@ func TestForwardRequestWithAuthRefreshSecondFail(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -523,7 +535,7 @@ func TestForwardRequestError(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -545,11 +557,12 @@ func TestForwardRequestWithAuthRefreshSeedsCsrf(t *testing.T) {
 		return nil
 	})
 	// Second call: refresh endpoint returns new tokens
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
-		return nil
-	})
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
+			return nil
+		})
 	// Third call: retried original request succeeds
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
@@ -565,7 +578,7 @@ func TestForwardRequestWithAuthRefreshSeedsCsrf(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, csrf, testBreaker())
+	}, csrf, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -588,11 +601,12 @@ func TestForwardRequestWithAuthRefreshCsrfSeedError(t *testing.T) {
 		resp.SetStatusCode(fasthttp.StatusUnauthorized)
 		return nil
 	})
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
-		return nil
-	})
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
+			return nil
+		})
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
 		return nil
@@ -604,7 +618,7 @@ func TestForwardRequestWithAuthRefreshCsrfSeedError(t *testing.T) {
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, csrf, testBreaker())
+	}, csrf, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -618,7 +632,7 @@ func TestForwardRequestWithAuthRefreshCsrfSeedError(t *testing.T) {
 	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), "new_access_token")
 }
 
-func TestForwardRequestWithAuthRefreshSecondFailNoSeed(t *testing.T) {
+func TestForwardRequestWithAuthRefreshSecondFailStillSeeds(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
@@ -628,20 +642,27 @@ func TestForwardRequestWithAuthRefreshSecondFailNoSeed(t *testing.T) {
 		resp.SetStatusCode(fasthttp.StatusUnauthorized)
 		return nil
 	})
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
-		return nil
-	})
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
+			return nil
+		})
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).Return(fmt.Errorf("broken pipe"))
 
-	// Seed must NOT be called when the retried request itself fails.
+	// Seed is driven by the refresh coordinator, which runs (and seeds) before the
+	// retried request is attempted at all — it fires once the refresh itself
+	// succeeds, regardless of what the subsequent retry does.
 	csrf := mocks.NewCsrfHandlerMock(ctrl)
+	csrf.EXPECT().Seed(gomock.Any(), gomock.Any()).DoAndReturn(func(_ *fasthttp.RequestCtx, auth cookie.Auth) error {
+		assert.Equal(t, "new_access_token", auth.AccessToken)
+		return nil
+	})
 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, csrf, testBreaker())
+	}, csrf, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -653,7 +674,7 @@ func TestForwardRequestWithAuthRefreshSecondFailNoSeed(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestForwardRequestWithAuthRefreshNon2xxNoSeed(t *testing.T) {
+func TestForwardRequestWithAuthRefreshNon2xxStillSeeds(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	h := mocks.NewHttpRetryClientMock(ctrl)
 	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
@@ -663,23 +684,29 @@ func TestForwardRequestWithAuthRefreshNon2xxNoSeed(t *testing.T) {
 		resp.SetStatusCode(fasthttp.StatusUnauthorized)
 		return nil
 	})
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
-		return nil
-	})
-	// Retried request returns 500 — Seed must NOT be called.
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
+			return nil
+		})
+	// Retried request returns 500 — Seed still fires: it is tied to the refresh
+	// succeeding, not to the retried request's outcome.
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusInternalServerError)
 		return nil
 	})
 
 	csrf := mocks.NewCsrfHandlerMock(ctrl)
+	csrf.EXPECT().Seed(gomock.Any(), gomock.Any()).DoAndReturn(func(_ *fasthttp.RequestCtx, auth cookie.Auth) error {
+		assert.Equal(t, "new_access_token", auth.AccessToken)
+		return nil
+	})
 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, csrf, testBreaker())
+	}, csrf, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -708,11 +735,12 @@ func TestForwardRequestWithAuthRefreshMalformedExpiryReturnsError(t *testing.T) 
 		return nil
 	})
 	// 2nd: refresh succeeds but the backend sent a malformed refreshTokenExpiredAt
-	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
-		resp.SetStatusCode(fasthttp.StatusOK)
-		resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"not-a-timestamp"}`)
-		return nil
-	})
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"not-a-timestamp"}`)
+			return nil
+		})
 	// 3rd: retried original request succeeds
 	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
 		resp.SetStatusCode(fasthttp.StatusOK)
@@ -722,7 +750,7 @@ func TestForwardRequestWithAuthRefreshMalformedExpiryReturnsError(t *testing.T) 
 	apiUrl, _ := url.Parse(endpoint)
 	s := NewHttp(h, config.Config{
 		ApiURI: apiUrl,
-	}, nil, testBreaker())
+	}, nil, testBreaker(), testCoordinator())
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
@@ -862,4 +890,93 @@ func TestResponseBodyAttributesEnabled(t *testing.T) {
 	assert.Len(t, attrs, 1)
 	assert.Equal(t, "http.response.body", string(attrs[0].Key))
 	assert.Equal(t, `{"accessToken":"***"}`, attrs[0].Value.AsString())
+}
+
+// concurrencyFakeClient is a hand-written stub, not a gomock — gomock's fixed .EXPECT()
+// ordering doesn't fit concurrent, order-independent calls. It routes on request
+// path/Authorization instead: refresh always succeeds; the proxied endpoint returns 401
+// for the stale token, 200 for the refreshed one.
+type concurrencyFakeClient struct {
+	refreshCalls int32
+	proxyCalls   int32
+}
+
+func (c *concurrencyFakeClient) Do(req *fasthttp.Request, resp *fasthttp.Response) error {
+	if string(req.URI().PathOriginal()) == "/v1/auth/refresh" {
+		atomic.AddInt32(&c.refreshCalls, 1)
+		// Hold the "lock" a little so concurrent callers actually overlap and have
+		// something to coalesce onto, instead of finishing before the next one starts.
+		time.Sleep(20 * time.Millisecond)
+		resp.SetStatusCode(fasthttp.StatusOK)
+		resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
+
+		return nil
+	}
+
+	atomic.AddInt32(&c.proxyCalls, 1)
+	if string(req.Header.Peek(headers.Authorization)) == "Bearer access_token" {
+		resp.SetStatusCode(fasthttp.StatusUnauthorized)
+
+		return nil
+	}
+	resp.SetStatusCode(fasthttp.StatusOK)
+
+	return nil
+}
+
+func (c *concurrencyFakeClient) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+	return c.Do(req, resp)
+}
+func (c *concurrencyFakeClient) WithReadTimeout(time.Duration) http.Client  { return c }
+func (c *concurrencyFakeClient) WithWriteTimeout(time.Duration) http.Client { return c }
+func (c *concurrencyFakeClient) WithRetryAttempts(uint) retryhttp.Client    { return c }
+func (c *concurrencyFakeClient) DoWithRetry(req *fasthttp.Request, resp *fasthttp.Response, attempts uint) error {
+	return c.Do(req, resp)
+}
+
+// TestForwardRequestConcurrentRefreshesAreCoalesced is the integration test for issue
+// #44: N concurrent requests that all hit a 401 on the same (expired) refresh token
+// must trigger exactly one POST /v1/auth/refresh — not N racing ones — and each
+// request's own retry must still complete with the refreshed token.
+func TestForwardRequestConcurrentRefreshesAreCoalesced(t *testing.T) {
+	client := &concurrencyFakeClient{}
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(client, config.Config{
+		ApiURI: apiUrl,
+	}, nil, testBreaker(), testCoordinator())
+
+	const n = 15
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	ctxs := make([]fasthttp.RequestCtx, n)
+
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			ctxs[i].Request.Header.SetMethod(fasthttp.MethodGet)
+			ctxs[i].Request.Header.SetCookie(cookie.AccessTokenCookieName, "access_token")
+			ctxs[i].Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token")
+			// Without a parent span context (normally set by traces.TraceHandler),
+			// spanCtx falls back to the bare *fasthttp.RequestCtx, whose Done()/Err()
+			// panic on its nil (never-accepted) server once a waiter selects on it.
+			traces.UpdateParentContext(&ctxs[i], context.Background())
+
+			<-start
+			errs[i] = s.ForwardRequest(&ctxs[i], nil)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	assert.EqualValues(t, 1, atomic.LoadInt32(&client.refreshCalls), "exactly one refresh call across all coalesced requests")
+	assert.EqualValues(t, 2*n, atomic.LoadInt32(&client.proxyCalls), "each request still gets its own initial 401 + retried 200")
+
+	for i := 0; i < n; i++ {
+		assert.NoError(t, errs[i])
+		assert.Equal(t, fasthttp.StatusOK, ctxs[i].Response.StatusCode())
+		assert.Contains(t, string(ctxs[i].Response.Header.PeekCookie(cookie.AccessTokenCookieName)), "new_access_token")
+	}
 }

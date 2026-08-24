@@ -52,4 +52,5 @@ mock-gen:
 	mockgen -source=router/api/handler.go -package=mocks -destination=mocks/api_handler_mock.go -mock_names=Handler=ApiHandlerMock
 	mockgen -source=router/csrf/handler.go -package=mocks -destination=mocks/csrf_handler_mock.go -mock_names=Handler=CsrfHandlerMock
 	mockgen -source=jwks/provider.go -package=mocks -destination=mocks/jwks_provider_mock.go -mock_names=Provider=JwksProviderMock
+	mockgen -source=service/api/refresh/coordinator.go -package=mocks -destination=mocks/refresh_coordinator_mock.go -mock_names=Coordinator=RefreshCoordinatorMock
 
