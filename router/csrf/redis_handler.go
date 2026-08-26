@@ -69,6 +69,15 @@ func newRedisUpGauge() prometheus.Gauge {
 	return g
 }
 
+// Endpoints that replace whatever session the request arrived with. Seed() owns the CSRF
+// lifecycle for these; see Handler for why they bypass validation and rotation entirely.
+var sessionEstablishingPaths = map[string]bool{
+	"/api/auth/login":           true,
+	"/api/auth/login/passkey":   true,
+	"/api/auth/register":        true,
+	"/api/auth/provider/google": true,
+}
+
 var (
 	csrfRequiredForMethods = map[string]bool{
 		fasthttp.MethodPost:   true,
@@ -117,6 +126,18 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 		method := string(ctx.Request.Header.Method())
 
 		if method == fasthttp.MethodOptions {
+			h(ctx)
+
+			return
+		}
+
+		// The token of the session being replaced says nothing about a login or register
+		// request, and enforcing it locks the user out: the Redis entry lives 10 minutes
+		// while the auth cookies survive until the refresh token expires, so a stale
+		// cshtrka cookie is enough to make IsLogged() true with nothing left to validate
+		// against. Skipping rotation matters just as much — it runs off the *old* user
+		// context and would overwrite the cookie Seed() just wrote for the new session.
+		if sessionEstablishingPaths[string(ctx.Path())] {
 			h(ctx)
 
 			return
