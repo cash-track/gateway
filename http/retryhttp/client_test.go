@@ -3,10 +3,13 @@ package retryhttp
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -273,4 +276,159 @@ func TestDELETEDeliveredOnceOnSilentClose(t *testing.T) {
 	assert.Error(t, err)
 	assert.EqualValues(t, 1, atomic.LoadInt64(&delivered),
 		"DELETE must be delivered to the backend exactly once, not replayed on io.EOF")
+}
+
+// The production regression: a GET whose pooled connection died surfaces
+// fasthttp.ErrConnectionClosed, not "broken pipe". Gating the retry on the literal
+// substring let five GETs turn into 502s the moment the API container was replaced.
+func TestDoWithRetryRetriesGetOnTransportError(t *testing.T) {
+	tests := map[string]error{
+		"ConnectionClosed": fasthttp.ErrConnectionClosed,
+		"EOF":              io.EOF,
+		"BrokenPipe":       &net.OpError{Op: "write", Err: os.NewSyscallError("write", syscall.EPIPE)},
+		"ConnectionReset":  &net.OpError{Op: "read", Err: os.NewSyscallError("read", syscall.ECONNRESET)},
+		"WrappedEOF":       fmt.Errorf("api request: %w", io.EOF),
+	}
+
+	for name, transportErr := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			c := httpmock.NewClientMock(ctrl)
+			c.EXPECT().Do(gomock.Any(), gomock.Any()).Times(2).Return(transportErr)
+
+			client := FastHttpRetryClient{Client: c}
+			client.WithRetryAttempts(2)
+
+			req := &fasthttp.Request{}
+			req.Header.SetMethod(fasthttp.MethodGet)
+
+			assert.Error(t, client.Do(req, &fasthttp.Response{}))
+		})
+	}
+}
+
+// A response that arrived but timed out, or any application-level failure, says nothing
+// about the connection: replaying it only doubles the latency budget.
+func TestDoWithRetryDoesNotRetryOnNonTransportError(t *testing.T) {
+	tests := map[string]error{
+		"Timeout":      fasthttp.ErrTimeout,
+		"NoFreeConns":  fasthttp.ErrNoFreeConns,
+		"Unclassified": fmt.Errorf("something else went wrong"),
+	}
+
+	for name, err := range tests {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			c := httpmock.NewClientMock(ctrl)
+			c.EXPECT().Do(gomock.Any(), gomock.Any()).Times(1).Return(err)
+
+			client := FastHttpRetryClient{Client: c}
+			client.WithRetryAttempts(2)
+
+			req := &fasthttp.Request{}
+			req.Header.SetMethod(fasthttp.MethodGet)
+
+			assert.Error(t, client.Do(req, &fasthttp.Response{}))
+		})
+	}
+}
+
+// A transport error is still not a licence to replay a mutating request.
+func TestDoWithRetryDoesNotRetryMutatingMethodOnTransportError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	c := httpmock.NewClientMock(ctrl)
+	c.EXPECT().Do(gomock.Any(), gomock.Any()).Times(1).Return(fasthttp.ErrConnectionClosed)
+
+	client := FastHttpRetryClient{Client: c}
+	client.WithRetryAttempts(2)
+
+	req := &fasthttp.Request{}
+	req.Header.SetMethod(fasthttp.MethodPost)
+
+	assert.Error(t, client.Do(req, &fasthttp.Response{}))
+}
+
+// jwks.HttpProvider never calls WithRetryAttempts, so the default is the only thing
+// standing between an hourly key refresh and a single-attempt failure. Both refreshes
+// after the default dropped to 1 failed in production.
+func TestNewFastHttpRetryClientDefaultsToOneRetry(t *testing.T) {
+	c, ok := NewFastHttpRetryClient().(*FastHttpRetryClient)
+
+	assert.True(t, ok)
+	assert.EqualValues(t, 2, c.attempts,
+		"a consumer that never calls WithRetryAttempts must still get one retry")
+}
+
+func TestIsRetryableTransportError(t *testing.T) {
+	tests := map[string]struct {
+		err  error
+		want bool
+	}{
+		"Nil":              {nil, false},
+		"ConnectionClosed": {fasthttp.ErrConnectionClosed, true},
+		"EOF":              {io.EOF, true},
+		"BrokenPipe":       {&net.OpError{Op: "write", Err: os.NewSyscallError("write", syscall.EPIPE)}, true},
+		"ConnectionReset":  {&net.OpError{Op: "read", Err: os.NewSyscallError("read", syscall.ECONNRESET)}, true},
+		"BrokenPipeString": {fmt.Errorf("unknown error: broken pipe or closed connection"), true},
+		"Timeout":          {fasthttp.ErrTimeout, false},
+		"Other":            {fmt.Errorf("bad gateway"), false},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isRetryableTransportError(tt.err))
+		})
+	}
+}
+
+// End-to-end shape of the incident: the first connection is closed without a response —
+// a keep-alive socket the backend had already dropped — and the retry must land on a
+// fresh one and succeed, so the browser never sees the 502.
+func TestGETRecoversFromStaleConnection(t *testing.T) {
+	var accepted int64
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+
+			go func(conn net.Conn) {
+				defer func() { _ = conn.Close() }()
+
+				// The first connection dies the way a dropped keep-alive socket does:
+				// closed before a single response byte is written.
+				if atomic.AddInt64(&accepted, 1) == 1 {
+					return
+				}
+
+				if readFullRequestLine(conn) {
+					_, _ = conn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"))
+				}
+			}(conn)
+		}
+	}()
+
+	c := NewFastHttpRetryClient()
+	c.WithReadTimeout(2 * time.Second)
+	c.WithWriteTimeout(2 * time.Second)
+
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+	resp := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(resp)
+
+	req.Header.SetMethod(fasthttp.MethodGet)
+	req.SetRequestURI("http://" + ln.Addr().String() + "/v1/profile")
+
+	assert.NoError(t, c.Do(req, resp))
+	assert.Equal(t, fasthttp.StatusOK, resp.StatusCode())
+	assert.EqualValues(t, 2, atomic.LoadInt64(&accepted))
 }

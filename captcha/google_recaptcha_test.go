@@ -1,7 +1,9 @@
 package captcha
 
 import (
+	"bytes"
 	"fmt"
+	"log/slog"
 	"net"
 	"testing"
 
@@ -13,6 +15,20 @@ import (
 	"github.com/cash-track/gateway/headers"
 	"github.com/cash-track/gateway/mocks"
 )
+
+// captureLogs redirects the default logger for one test. Verify's two error returns become
+// a 500 to the caller, and both used to reach the span only — a 500 with no log line left
+// the 14:38 passkey failure with nothing to diagnose.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	output := &bytes.Buffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	return output
+}
 
 func TestVerify(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -149,6 +165,7 @@ func TestVerifyEmptyChallenge(t *testing.T) {
 }
 
 func TestVerifyRequestFail(t *testing.T) {
+	output := captureLogs(t)
 	ctrl := gomock.NewController(t)
 	c := mocks.NewHttpRetryClientMock(ctrl)
 
@@ -168,9 +185,12 @@ func TestVerifyRequestFail(t *testing.T) {
 
 	assert.False(t, state)
 	assert.Error(t, err)
+	assert.Contains(t, output.String(), "captcha verify request failed")
+	assert.Contains(t, output.String(), `"level":"ERROR"`)
 }
 
 func TestVerifyBadResponse(t *testing.T) {
+	output := captureLogs(t)
 	ctrl := gomock.NewController(t)
 	c := mocks.NewHttpRetryClientMock(ctrl)
 
@@ -194,4 +214,6 @@ func TestVerifyBadResponse(t *testing.T) {
 
 	assert.False(t, state)
 	assert.Error(t, err)
+	assert.Contains(t, output.String(), "captcha verify response unreadable")
+	assert.Contains(t, output.String(), `"level":"ERROR"`)
 }

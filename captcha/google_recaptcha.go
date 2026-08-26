@@ -110,6 +110,9 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 	span.SetAttributes(traces.RequestAttributes(req)...)
 
 	if err := p.client.Do(req, resp); err != nil {
+		// This returns a 500 to the caller, so it needs a log line and not just a span:
+		// the trace is sampled, the 500 is not.
+		slog.Error("captcha verify request failed", "client_ip", clientIp, "error", err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "request error")
 
@@ -120,6 +123,11 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 
 	verifyResp := googleReCaptchaVerifyResponse{}
 	if err := json.Unmarshal(resp.Body(), &verifyResp); err != nil {
+		slog.Error("captcha verify response unreadable",
+			"client_ip", clientIp,
+			"status", resp.StatusCode(),
+			"error", err,
+		)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "read body error")
 

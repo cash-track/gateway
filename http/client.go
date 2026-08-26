@@ -10,6 +10,10 @@ const (
 	ReadTimeout  = 5 * time.Second
 	WriteTimeout = 5 * time.Second
 	Concurrency  = 4096
+
+	// IdleConnDuration must stay well under the time a backend container survives a
+	// redeploy, so a stale socket is reaped rather than handed to the next request.
+	IdleConnDuration = 10 * time.Second
 )
 
 type Client interface {
@@ -28,9 +32,12 @@ type FastHttpClient struct {
 func NewFastHttpClient() Client {
 	return &FastHttpClient{
 		Client: &fasthttp.Client{
-			ReadTimeout:                   ReadTimeout,
-			WriteTimeout:                  WriteTimeout,
-			MaxIdleConnDuration:           time.Hour,
+			ReadTimeout:  ReadTimeout,
+			WriteTimeout: WriteTimeout,
+			// Bounds how long a pooled socket may sit idle. An hour let the pool outlive
+			// the backend: every API container replacement stranded connections the peer
+			// had already dropped, and the first request on each answered 502.
+			MaxIdleConnDuration:           IdleConnDuration,
 			NoDefaultUserAgentHeader:      true,
 			DisableHeaderNamesNormalizing: true,
 			DisablePathNormalizing:        true,
@@ -40,7 +47,8 @@ func NewFastHttpClient() Client {
 			//
 			// Do not raise above 1: fasthttp retries any method on io.EOF regardless of
 			// RetryIf, so only this value closes that hole. GET/HEAD lose retries here as
-			// a result — retryhttp one layer up still covers them. Pinned by
+			// a result; retryhttp.FastHttpRetryClient owns them instead, where the method
+			// gate and the error classification are both explicit. Pinned by
 			// TestDoNotRetriedAtThisLayerRegardlessOfMethod.
 			MaxIdemponentCallAttempts: 1,
 			// Unreachable at MaxIdemponentCallAttempts = 1; kept as a statement of intent.
