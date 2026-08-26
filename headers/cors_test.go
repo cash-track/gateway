@@ -44,6 +44,29 @@ func TestCorsHandlerPreflightAllowedOrigin(t *testing.T) {
 	assert.Equal(t, 0, *calls, "inner handler must not be invoked for a true preflight request")
 }
 
+// Idempotency-Key is a non-simple header sent on every mutating request: preflight must
+// reflect it back or the browser blocks the request. Allow-Headers is built from what the
+// browser asked for, so no fixed allow-list names it.
+func TestCorsHandlerPreflightAllowsIdempotencyKeyHeader(t *testing.T) {
+	config.Global.CorsAllowedOrigins = map[string]bool{"test.com": true}
+	config.Global.DebugHttp = true
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodOptions)
+	ctx.Request.Header.Set(Origin, "Test.Com")
+	ctx.Request.Header.Set(AccessControlRequestMethod, fasthttp.MethodPost)
+	ctx.Request.Header.Set(AccessControlRequestHeaders, "Idempotency-Key, Content-Type")
+	ctx.Request.Header.Set(XForwardedFor, "127.0.0.1")
+
+	inner, calls := spyHandler()
+	handler := CorsHandler(inner)
+	handler(&ctx)
+
+	assert.Equal(t, fasthttp.StatusNoContent, ctx.Response.StatusCode())
+	assert.Equal(t, "Idempotency-Key, Content-Type", string(ctx.Response.Header.Peek(AccessControlAllowHeaders)))
+	assert.Equal(t, 0, *calls, "inner handler must not be invoked for a true preflight request")
+}
+
 func TestCorsHandlerPreflightDisallowedOrigin(t *testing.T) {
 	config.Global.CorsAllowedOrigins = map[string]bool{"test.com": true}
 	config.Global.DebugHttp = true

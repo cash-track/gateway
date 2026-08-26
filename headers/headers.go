@@ -22,6 +22,8 @@ const (
 	CfConnectingIP                = "Cf-Connecting-IP"
 	ContentSecurityPolicy         = "Content-Security-Policy"
 	ContentType                   = "Content-Type"
+	IdempotencyKey                = "Idempotency-Key"
+	IdempotencyReplayed           = "Idempotency-Replayed"
 	Origin                        = "Origin"
 	Referer                       = "Referer"
 	ReferrerPolicy                = "Referrer-Policy"
@@ -54,6 +56,8 @@ var (
 	singleInstanceHeaders = map[string]bool{
 		strings.ToLower(Authorization):       true,
 		strings.ToLower(ContentType):         true,
+		strings.ToLower(IdempotencyKey):      true,
+		strings.ToLower(IdempotencyReplayed): true,
 		strings.ToLower(Origin):              true,
 		strings.ToLower(Referer):             true,
 		strings.ToLower(RetryAfter):          true,

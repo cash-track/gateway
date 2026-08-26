@@ -44,6 +44,7 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		headers.AccessControlRequestHeaders,
 		headers.AccessControlRequestMethod,
 		headers.ContentType,
+		headers.IdempotencyKey,
 		headers.UserAgent,
 		headers.Referer,
 		headers.Origin,
@@ -209,6 +210,7 @@ func forwardResponse(ctx *fasthttp.RequestCtx, resp *fasthttp.Response) error {
 
 	headers.CopyFromResponse(resp, ctx, []string{
 		headers.ContentType,
+		headers.IdempotencyReplayed,
 		headers.RetryAfter,
 		headers.XCtApiSha,
 		headers.XCtApiVersion,

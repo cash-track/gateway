@@ -70,6 +70,63 @@ func TestFullForwardRequestWithAuth(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestForwardRequestCarriesIdempotencyKey(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+
+		assert.Equal(t, "3fa85f64-5717-4562-b3fc-2c963f66afa6", string(req.Header.Peek(headers.IdempotencyKey)))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, nil, testBreaker(), testCoordinator())
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+	ctx.Request.Header.Set(headers.IdempotencyKey, "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+}
+
+func TestForwardRequestOmitsIdempotencyKeyWhenAbsent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+
+		assert.Empty(t, req.Header.Peek(headers.IdempotencyKey))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, nil, testBreaker(), testCoordinator())
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+	ctx.SetRemoteAddr(&net.TCPAddr{IP: []byte{0xA, 0x0, 0x0, 0x1}})
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+}
+
 func TestForwardRequestWithBodyOverride(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	h := mocks.NewHttpRetryClientMock(ctrl)
@@ -310,6 +367,55 @@ func TestForwardRequestGatewayVersionHeadersPersistAcrossRefreshRetry(t *testing
 
 	ctx := fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod(fasthttp.MethodGet)
+	ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, "access_token")
+	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token")
+
+	err := s.ForwardRequest(&ctx, nil)
+
+	assert.NoError(t, err)
+}
+
+// The key must survive a 401-refresh-retry cycle: without it on the retry, the API's
+// dedup middleware sees a brand-new request and can double-write.
+func TestForwardRequestIdempotencyKeyPersistsAcrossRefreshRetry(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	h := mocks.NewHttpRetryClientMock(ctrl)
+	h.EXPECT().WithReadTimeout(gomock.Eq(httpReadTimeout))
+	h.EXPECT().WithWriteTimeout(gomock.Eq(httpWriteTimeout))
+	h.EXPECT().WithRetryAttempts(gomock.Eq(httpRetryAttempts))
+	// 1st: original forwarded request, gets 401
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusUnauthorized)
+
+		assert.Equal(t, "3fa85f64-5717-4562-b3fc-2c963f66afa6", string(req.Header.Peek(headers.IdempotencyKey)))
+
+		return nil
+	})
+	// 2nd: refresh request, built with its own req in refresh_token.go
+	h.EXPECT().DoTimeout(gomock.Any(), gomock.Any(), gomock.Eq(refreshHttpTimeout)).DoAndReturn(
+		func(req *fasthttp.Request, resp *fasthttp.Response, _ time.Duration) error {
+			resp.SetStatusCode(fasthttp.StatusOK)
+			resp.SetBodyString(fmt.Sprintf(`{"accessToken":"new_access_token","refreshToken":"new_refresh_token","refreshTokenExpiredAt":"%s"}`, tomorrowRFC3339()))
+
+			return nil
+		})
+	// 3rd: retry, reusing the same req as the 1st — this is the assertion that matters.
+	h.EXPECT().Do(gomock.Any(), gomock.Any()).DoAndReturn(func(req *fasthttp.Request, resp *fasthttp.Response) error {
+		resp.SetStatusCode(fasthttp.StatusOK)
+
+		assert.Equal(t, "3fa85f64-5717-4562-b3fc-2c963f66afa6", string(req.Header.Peek(headers.IdempotencyKey)))
+
+		return nil
+	})
+
+	apiUrl, _ := url.Parse(endpoint)
+	s := NewHttp(h, config.Config{
+		ApiURI: apiUrl,
+	}, nil, testBreaker(), testCoordinator())
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+	ctx.Request.Header.Set(headers.IdempotencyKey, "3fa85f64-5717-4562-b3fc-2c963f66afa6")
 	ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, "access_token")
 	ctx.Request.Header.SetCookie(cookie.RefreshTokenCookieName, "refresh_token")
 
@@ -787,6 +893,20 @@ func TestForwardResponse(t *testing.T) {
 	assert.Equal(t, "deadbeef", string(ctx.Response.Header.Peek(headers.XCtApiSha)))
 	assert.Equal(t, "123", string(ctx.Response.Header.Peek(headers.XRateLimit)))
 	assert.Equal(t, "2", string(ctx.Response.Header.Peek(headers.XRateLimitRemaining)))
+}
+
+// Diagnostic header, but still relayed back like the other API-set headers.
+func TestForwardResponseRelaysIdempotencyReplayed(t *testing.T) {
+	ctx := fasthttp.RequestCtx{}
+
+	resp := fasthttp.Response{}
+	resp.SetStatusCode(fasthttp.StatusOK)
+	resp.Header.Set(headers.IdempotencyReplayed, "true")
+
+	err := forwardResponse(&ctx, &resp)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "true", string(ctx.Response.Header.Peek(headers.IdempotencyReplayed)))
 }
 
 // CORS response headers are decided entirely by headers.CorsHandler, which wraps

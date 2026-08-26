@@ -220,6 +220,7 @@ paths:
       security: []
       parameters:
         - $ref: "#/components/parameters/CaptchaHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
       requestBody:
         required: true
         content:
@@ -280,6 +281,7 @@ paths:
       security: []
       parameters:
         - $ref: "#/components/parameters/CaptchaHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
       requestBody:
         required: true
         content:
@@ -336,6 +338,7 @@ paths:
       security: []
       parameters:
         - $ref: "#/components/parameters/CaptchaHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
       requestBody:
         required: true
         content:
@@ -395,6 +398,7 @@ paths:
       security: []
       parameters:
         - $ref: "#/components/parameters/CaptchaHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
       requestBody:
         required: true
         content:
@@ -439,7 +443,7 @@ paths:
           $ref: "#/components/responses/ServiceUnavailable"
 
   /api/auth/login/passkey/init:
-    post:
+    get:
       operationId: authPasskeyLoginInit
       summary: Initialise WebAuthn login challenge
       description: |
@@ -504,6 +508,8 @@ paths:
       security:
         - cookieAuth: []
         - {}
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
       responses:
         "200":
           description: |
@@ -602,6 +608,7 @@ paths:
         - {}
       parameters:
         - $ref: "#/components/parameters/CsrfCookie"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
       requestBody:
         required: false
         content:
@@ -642,6 +649,7 @@ paths:
         - {}
       parameters:
         - $ref: "#/components/parameters/CsrfCookie"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
       requestBody:
         required: false
         content:
@@ -678,6 +686,7 @@ paths:
         - {}
       parameters:
         - $ref: "#/components/parameters/CsrfCookie"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
       requestBody:
         required: false
         content:
@@ -714,6 +723,7 @@ paths:
         - {}
       parameters:
         - $ref: "#/components/parameters/CsrfCookie"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
       responses:
         "200":
           $ref: "#/components/responses/ProxySuccess"
@@ -828,6 +838,20 @@ components:
         type: string
         format: uuid
 
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Canonical lowercase UUIDv4, generated client-side, uniquely identifying this mutating
+        request. Forwarded unchanged to the backend, which is the authoritative source of
+        deduplication: a repeated request with the same key (e.g. from a gateway/Traefik retry)
+        is deduplicated by the backend rather than applied twice. The gateway itself does not
+        interpret the value — it only relays it, including across an internal 401-refresh-retry.
+      schema:
+        type: string
+        format: uuid
+
   # ---------------------------------------------------------------------------
   # HEADERS
   # ---------------------------------------------------------------------------
@@ -886,6 +910,17 @@ components:
       schema:
         type: string
         example: "9f8e7d6c5b4a"
+
+    IdempotencyReplayed:
+      description: |
+        Set by the backend, not the gateway — the gateway only relays it unchanged. Present
+        (`true`) when the response was served from the backend's idempotency store for a
+        previously-seen `Idempotency-Key` rather than freshly processed. Diagnostic only, not
+        required for correct client behavior. Absent when the request carried no
+        `Idempotency-Key` or was processed fresh.
+      schema:
+        type: string
+        example: "true"
 
     StrictTransportSecurity:
       description: |
@@ -1040,6 +1075,8 @@ components:
           $ref: "#/components/headers/ApiVersion"
         X-Ct-Api-Sha:
           $ref: "#/components/headers/ApiSha"
+        Idempotency-Replayed:
+          $ref: "#/components/headers/IdempotencyReplayed"
         Access-Control-Allow-Origin:
           description: Present only when the request's `Origin` is in `CORS_ALLOWED_ORIGINS`.
           schema:
