@@ -32,7 +32,9 @@ func (r *Router) register() {
 
 	r.POST("/api/auth/login", r.api.AuthSetHandler)
 	r.POST("/api/auth/login/passkey", r.api.AuthSetHandler)
-	r.POST("/api/auth/login/passkey/init", r.api.CaptchaVerifyHandler)
+	// GET: both the backend route and the only client use it. As POST this handler was
+	// unreachable and the real GET fell through to the catch-all below, skipping captcha.
+	r.GET("/api/auth/login/passkey/init", r.api.CaptchaVerifyHandler)
 	r.POST("/api/auth/register", r.api.AuthSetHandler)
 	r.POST("/api/auth/provider/google", r.api.AuthSetHandler)
 	r.POST("/api/auth/logout", r.api.AuthResetHandler)

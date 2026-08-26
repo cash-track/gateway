@@ -439,7 +439,7 @@ paths:
           $ref: "#/components/responses/ServiceUnavailable"
 
   /api/auth/login/passkey/init:
-    post:
+    get:
       operationId: authPasskeyLoginInit
       summary: Initialise WebAuthn login challenge
       description: |
