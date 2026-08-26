@@ -22,6 +22,16 @@ func TestNewFastHttpClient(t *testing.T) {
 	assert.NotNil(t, fhc.RetryIf)
 }
 
+// The pool must not outlive the backend. At an hour, every API container replacement left
+// the gateway holding dead sockets and answering 502 until they aged out.
+func TestNewFastHttpClientIdleConnDuration(t *testing.T) {
+	fhc := NewFastHttpClient().(*FastHttpClient)
+
+	assert.Positive(t, fhc.MaxIdleConnDuration)
+	assert.LessOrEqual(t, fhc.MaxIdleConnDuration, 30*time.Second,
+		"idle sockets must be reaped soon enough that a container swap does not strand them")
+}
+
 // Tests the RetryIf predicate in isolation; it cannot catch MaxIdemponentCallAttempts
 // being raised above 1 (see io.EOF in client.go). That is covered end-to-end by
 // TestDoNotRetriedAtThisLayerRegardlessOfMethod below.
