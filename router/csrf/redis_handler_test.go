@@ -29,6 +29,9 @@ func TestHandler(t *testing.T) {
 		expectStatus        int
 		expectBody          string
 		expectCsrfCookieSet bool
+		// The case primes a Get that would fail the request and asserts it is never
+		// consumed, proving the CSRF store was not touched at all.
+		expectRedisUntouched bool
 	}{
 		"TokenValidForPost": {
 			request: func() *fasthttp.RequestCtx {
@@ -100,6 +103,94 @@ func TestHandler(t *testing.T) {
 			setup: func(mock redismock.ClientMock) {
 			},
 			expectPass: true,
+		},
+		// A stale access-token cookie must not gate the endpoints that replace it. The
+		// Redis entry lives 10 minutes while the auth cookies live until the refresh token
+		// expires, so validating here locks the user out of logging back in.
+		"SkippedForLoginWithStaleSession": {
+			request: func() *fasthttp.RequestCtx {
+				ctx := fasthttp.RequestCtx{}
+				ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+				ctx.Request.SetRequestURI("/api/auth/login")
+				ctx.Request.Header.SetCookie(cookie.CsrfTokenCookieName, "csrf_token")
+				ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, accessToken)
+				return &ctx
+			}(),
+			setup: func(mock redismock.ClientMock) {
+				key := fmt.Sprintf("%s:%d:%d", keyPrefix, 123987, 987654321)
+				mock.ExpectGet(key).RedisNil()
+			},
+			expectPass:           true,
+			expectCsrfCookieSet:  false,
+			expectRedisUntouched: true,
+		},
+		"SkippedForPasskeyLoginWithStaleSession": {
+			request: func() *fasthttp.RequestCtx {
+				ctx := fasthttp.RequestCtx{}
+				ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+				ctx.Request.SetRequestURI("/api/auth/login/passkey")
+				ctx.Request.Header.SetCookie(cookie.CsrfTokenCookieName, "csrf_token")
+				ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, accessToken)
+				return &ctx
+			}(),
+			setup: func(mock redismock.ClientMock) {
+				key := fmt.Sprintf("%s:%d:%d", keyPrefix, 123987, 987654321)
+				mock.ExpectGet(key).RedisNil()
+			},
+			expectPass:           true,
+			expectCsrfCookieSet:  false,
+			expectRedisUntouched: true,
+		},
+		"SkippedForRegisterWithStaleSession": {
+			request: func() *fasthttp.RequestCtx {
+				ctx := fasthttp.RequestCtx{}
+				ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+				ctx.Request.SetRequestURI("/api/auth/register")
+				ctx.Request.Header.SetCookie(cookie.CsrfTokenCookieName, "csrf_token")
+				ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, accessToken)
+				return &ctx
+			}(),
+			setup: func(mock redismock.ClientMock) {
+				key := fmt.Sprintf("%s:%d:%d", keyPrefix, 123987, 987654321)
+				mock.ExpectGet(key).RedisNil()
+			},
+			expectPass:           true,
+			expectCsrfCookieSet:  false,
+			expectRedisUntouched: true,
+		},
+		"SkippedForGoogleProviderWithStaleSession": {
+			request: func() *fasthttp.RequestCtx {
+				ctx := fasthttp.RequestCtx{}
+				ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+				ctx.Request.SetRequestURI("/api/auth/provider/google")
+				ctx.Request.Header.SetCookie(cookie.CsrfTokenCookieName, "csrf_token")
+				ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, accessToken)
+				return &ctx
+			}(),
+			setup: func(mock redismock.ClientMock) {
+				key := fmt.Sprintf("%s:%d:%d", keyPrefix, 123987, 987654321)
+				mock.ExpectGet(key).RedisNil()
+			},
+			expectPass:           true,
+			expectCsrfCookieSet:  false,
+			expectRedisUntouched: true,
+		},
+		// The exemption is by exact path: nothing below /api/auth/ inherits it.
+		"EnforcedForOtherAuthPaths": {
+			request: func() *fasthttp.RequestCtx {
+				ctx := fasthttp.RequestCtx{}
+				ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+				ctx.Request.SetRequestURI("/api/auth/login/passkey/other")
+				ctx.Request.Header.SetCookie(cookie.CsrfTokenCookieName, "csrf_token")
+				ctx.Request.Header.SetCookie(cookie.AccessTokenCookieName, accessToken)
+				return &ctx
+			}(),
+			setup: func(mock redismock.ClientMock) {
+				key := fmt.Sprintf("%s:%d:%d", keyPrefix, 123987, 987654321)
+				mock.ExpectGet(key).RedisNil()
+			},
+			expectPass:   false,
+			expectStatus: fasthttp.StatusExpectationFailed,
 		},
 		"FailForInvalidAccessToken": {
 			request: func() *fasthttp.RequestCtx {
@@ -209,7 +300,10 @@ func TestHandler(t *testing.T) {
 				assert.Equal(t, test.expectBody, string(test.request.Response.Body()))
 			}
 
-			if err := mock.ExpectationsWereMet(); err != nil {
+			if test.expectRedisUntouched {
+				assert.Error(t, mock.ExpectationsWereMet(),
+					"primed Get was consumed: the CSRF store should not be queried at all")
+			} else if err := mock.ExpectationsWereMet(); err != nil {
 				t.Error(err)
 			}
 		})
