@@ -36,13 +36,21 @@ func (c *FastHttpRetryClient) Do(req *fasthttp.Request, resp *fasthttp.Response)
 func (c *FastHttpRetryClient) DoWithRetry(req *fasthttp.Request, resp *fasthttp.Response, attempts uint) error {
 	err := c.Client.Do(req, resp)
 
-	if attempts == 1 || err == nil || !strings.Contains(err.Error(), "broken pipe") {
+	// A broken pipe means the write failed, not that the backend never read and committed
+	// the request. Only GET/HEAD are safe to replay blind; http.Client's RetryIf one layer
+	// down carries the matching gate.
+	if attempts == 1 || err == nil || !isRetryableMethod(req) || !strings.Contains(err.Error(), "broken pipe") {
 		return err
 	}
 
 	slog.Warn("retrying request due to an error", "attempt", attempts, "error", err)
 
 	return c.DoWithRetry(req, resp, attempts-1)
+}
+
+// isRetryableMethod reports whether req may be safely replayed after a write failure.
+func isRetryableMethod(req *fasthttp.Request) bool {
+	return req.Header.IsGet() || req.Header.IsHead()
 }
 
 func (c *FastHttpRetryClient) WithRetryAttempts(attempts uint) Client {

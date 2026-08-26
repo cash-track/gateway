@@ -34,6 +34,22 @@ func NewFastHttpClient() Client {
 			NoDefaultUserAgentHeader:      true,
 			DisableHeaderNamesNormalizing: true,
 			DisablePathNormalizing:        true,
+			// No retries at this layer. fasthttp's defaults (5 attempts, PUT counted as
+			// idempotent) blindly replay a mutating request whose write failed after the
+			// backend already committed it.
+			//
+			// Do not raise above 1: fasthttp retries any method on io.EOF regardless of
+			// RetryIf, so only this value closes that hole. GET/HEAD lose retries here as
+			// a result — retryhttp one layer up still covers them. Pinned by
+			// TestDoNotRetriedAtThisLayerRegardlessOfMethod.
+			MaxIdemponentCallAttempts: 1,
+			// Unreachable at MaxIdemponentCallAttempts = 1; kept as a statement of intent.
+			// PUT is excluded despite being RFC-idempotent: the gateway's PUT routes are
+			// read-modify-write, and a write error can't distinguish "never arrived" from
+			// "committed, then the connection died".
+			RetryIf: func(req *fasthttp.Request) bool {
+				return req.Header.IsGet() || req.Header.IsHead()
+			},
 			Dial: (&fasthttp.TCPDialer{
 				Concurrency:      Concurrency,
 				DNSCacheDuration: time.Hour,

@@ -132,6 +132,9 @@ func (r *RedisHandler) Handler(h fasthttp.RequestHandler) fasthttp.RequestHandle
 		userCtx := r.newUserContext(cookie.ReadCSRFCookie(ctx))
 		span.SetAttributes(traces.AttributesGetter(userCtx)...)
 
+		// Load-bearing: this returns before h(ctx) forwards to the API, so a 417 proves the
+		// request never reached it — that is why the frontend can safely replay a mutating
+		// request after one. Do not reorder relative to h(ctx) below.
 		if err := r.validateCsrfRequest(spanCtx, userCtx, method); err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "invalid")
