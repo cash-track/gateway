@@ -91,15 +91,22 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 		fasthttp.ReleaseResponse(resp)
 	}()
 
+	method := upstreamMethod(string(ctx.Method()))
+
 	start := time.Now()
-	err := s.doWithBreaker(req, resp)
+	err := withInFlight(upstreamRequestsInFlight, func() error {
+		return s.doWithBreaker(req, resp)
+	})
 	duration := time.Since(start)
 
 	if err != nil {
+		upstreamRequestsTotal.WithLabelValues(method, upstreamStatusError).Inc()
 		span.RecordError(err)
 
 		return fmt.Errorf("API request error: %w", err)
 	}
+
+	observeUpstream(method, resp.StatusCode(), duration.Seconds())
 
 	logger.DebugResponse(resp, ServiceId)
 	logger.FullForwarded(ctx, resp, ServiceId, duration)
@@ -112,13 +119,26 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 	}
 
 	// Coalesced: only the leader for this refresh token actually calls the API,
-	// concurrent callers share its result. CSRF is seeded inside the closure so it
-	// runs once per actual refresh, not once per waiter.
+	// concurrent callers share its result. CSRF seeding and the tokenRefreshTotal
+	// counter live inside the closure so they run once per actual refresh, not once
+	// per coalesced waiter. tokenRefreshDuration stays outside on purpose — it is
+	// per-waiter wall time, as its help text documents.
 	refreshKey := refresh.Key(auth.RefreshToken)
+	refreshStart := time.Now()
 	newAuth, err := s.refresh.Do(spanCtx, refreshKey, func(refreshCtx context.Context) (cookie.Auth, error) {
 		newAuth, err := s.refreshToken(auth, refreshCtx, ctx)
 		if err != nil {
+			// Transient failure: could not reach the API or it returned a non-401
+			// (e.g. 5xx). The session is preserved by the caller below.
+			tokenRefreshTotal.WithLabelValues(tokenRefreshSessionPreserved).Inc()
+
 			return newAuth, err
+		}
+
+		if newAuth.IsLogged() {
+			tokenRefreshTotal.WithLabelValues(tokenRefreshSuccess).Inc()
+		} else {
+			tokenRefreshTotal.WithLabelValues(tokenRefreshFailed).Inc()
 		}
 
 		if s.csrf != nil && newAuth.IsLogged() {
@@ -133,11 +153,11 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 
 		return newAuth, nil
 	})
+	tokenRefreshDuration.Observe(time.Since(refreshStart).Seconds())
 	if err != nil {
-		// Transient failure: could not reach the API or it returned a non-401
-		// (e.g. 5xx). The refresh token may still be valid, so DO NOT delete
-		// cookies / log the user out. Preserve the session and return a
-		// retryable status; the client can retry once the API recovers.
+		// Transient failure (see the closure): the refresh token may still be valid,
+		// so DO NOT delete cookies / log the user out. Preserve the session and
+		// return a retryable status; the client can retry once the API recovers.
 		span.RecordError(err)
 		slog.Warn("refresh token attempt failed, keeping session (transient)",
 			"trace_id", traces.FindTraceId(ctx),
@@ -173,14 +193,19 @@ func (s *HttpService) ForwardRequest(ctx *fasthttp.RequestCtx, body []byte) erro
 
 		// execute request 2nd attempt
 		retryStart := time.Now()
-		retryErr := s.doWithBreaker(req, resp)
+		retryErr := withInFlight(upstreamRequestsInFlight, func() error {
+			return s.doWithBreaker(req, resp)
+		})
 		retryDuration := time.Since(retryStart)
 
 		if retryErr != nil {
+			upstreamRequestsTotal.WithLabelValues(method, upstreamStatusError).Inc()
 			retrySpan.RecordError(retryErr)
 
 			return fmt.Errorf("API request with fresh token error: %w", retryErr)
 		}
+
+		observeUpstream(method, resp.StatusCode(), retryDuration.Seconds())
 
 		logger.DebugResponse(resp, ServiceId)
 		// Logged separately from the initial attempt above: this is a second, genuinely

@@ -46,6 +46,8 @@ func (c *FastHttpRetryClient) DoWithRetry(req *fasthttp.Request, resp *fasthttp.
 		return err
 	}
 
+	retriesTotal.Inc()
+
 	// Method and URI make the line correlatable: this layer has no request context, so
 	// without them a retry warning cannot be tied to the error it preceded.
 	slog.Warn("retrying request due to an error",

@@ -58,9 +58,20 @@ func (h *HttpHandler) AuthSetHandler(ctx *fasthttp.RequestCtx) {
 	if err := h.Login(ctx); err != nil {
 		response.ByErrorAndStatus(err, fasthttp.StatusBadGateway).Write(ctx)
 	}
+
+	recordAuthAttempt(authActionFromPath(ctx.Path()), authResultFromStatus(ctx.Response.StatusCode()))
 }
 
 func (h *HttpHandler) CaptchaVerifyHandler(ctx *fasthttp.RequestCtx) {
+	// passkey/init is routed straight here (no AuthSetHandler), so record its
+	// outcome from whatever response this handler leaves behind. The guard keeps
+	// the calls from AuthSetHandler for other actions from double-counting.
+	if isPasskeyInitPath(ctx.Path()) {
+		defer func() {
+			recordAuthAttempt(authActionPasskeyInit, authResultFromStatus(ctx.Response.StatusCode()))
+		}()
+	}
+
 	if ok, err := h.captcha.Verify(ctx); err != nil || !ok {
 		if err != nil {
 			response.NewCaptchaErrorResponse(err).Write(ctx)
@@ -88,6 +99,12 @@ func (h *HttpHandler) AuthResetHandler(ctx *fasthttp.RequestCtx) {
 			"error", err,
 		)
 	}
+
+	logoutResult := authResultSuccess
+	if err != nil {
+		logoutResult = authResultFailure
+	}
+	recordAuthAttempt(authActionLogout, logoutResult)
 
 	// The response is gateway-authored, so drop everything CopyFromResponse may have
 	// copied from the backend (Retry-After, X-Ratelimit-*, CORS, ...) rather than
