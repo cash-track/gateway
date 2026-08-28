@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/valyala/fasthttp"
 	"go.uber.org/mock/gomock"
@@ -1071,6 +1072,10 @@ func TestForwardRequestConcurrentRefreshesAreCoalesced(t *testing.T) {
 	errs := make([]error, n)
 	ctxs := make([]fasthttp.RequestCtx, n)
 
+	// tokenRefreshTotal is incremented inside the coalescing closure, so N coalesced
+	// waiters sharing one leader must advance it by exactly 1, not by N.
+	refreshMetricBefore := testutil.ToFloat64(tokenRefreshTotal.WithLabelValues(tokenRefreshSuccess))
+
 	start := make(chan struct{})
 	for i := 0; i < n; i++ {
 		wg.Add(1)
@@ -1093,6 +1098,8 @@ func TestForwardRequestConcurrentRefreshesAreCoalesced(t *testing.T) {
 
 	assert.EqualValues(t, 1, atomic.LoadInt32(&client.refreshCalls), "exactly one refresh call across all coalesced requests")
 	assert.EqualValues(t, 2*n, atomic.LoadInt32(&client.proxyCalls), "each request still gets its own initial 401 + retried 200")
+	assert.Equal(t, refreshMetricBefore+1, testutil.ToFloat64(tokenRefreshTotal.WithLabelValues(tokenRefreshSuccess)),
+		"token refresh counted once per actual refresh, not once per coalesced waiter")
 
 	for i := 0; i < n; i++ {
 		assert.NoError(t, errs[i])

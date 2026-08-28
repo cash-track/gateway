@@ -80,12 +80,14 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 	if p.secret == "" {
 		span.SetStatus(codes.Ok, "disabled")
 		slog.Info("captcha secret empty, skipping verify", "client_ip", clientIp)
+		observeCaptchaResult(resultDisabled)
 
 		return true, nil
 	}
 
 	if string(ctx.Request.Header.Method()) == fasthttp.MethodOptions {
 		span.SetStatus(codes.Ok, "unsupported method")
+		observeCaptchaResult(resultDisabled)
 
 		return true, nil
 	}
@@ -94,6 +96,7 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 	if challenge == nil || string(challenge) == "" {
 		span.SetStatus(codes.Error, "empty challenge")
 		slog.Warn("captcha challenge empty", "client_ip", clientIp)
+		observeCaptchaResult(resultMissed)
 
 		return false, nil
 	}
@@ -115,6 +118,7 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 		slog.Error("captcha verify request failed", "client_ip", clientIp, "error", err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "request error")
+		observeCaptchaResult(resultError)
 
 		return false, fmt.Errorf("captcha verify request error: %w", err)
 	}
@@ -130,11 +134,13 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 		)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "read body error")
+		observeCaptchaResult(resultError)
 
 		return false, fmt.Errorf("captcha verify response unexpected: %w", err)
 	}
 
 	span.SetAttributes(traces.AttributesGetter(&verifyResp)...)
+	observeCaptchaScore(verifyResp.Score)
 
 	if !verifyResp.Success {
 		slog.Warn("captcha verify unsuccessful",
@@ -143,12 +149,14 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 			"error", strings.Join(verifyResp.ErrorCodes, ", "),
 		)
 		span.SetStatus(codes.Error, "validation failed")
+		observeCaptchaResult(resultMissed)
 
 		return false, nil
 	}
 
 	slog.Info("captcha verify ok", "client_ip", clientIp)
 	span.SetStatus(codes.Ok, "ok")
+	observeCaptchaResult(resultSolved)
 
 	return true, nil
 }
