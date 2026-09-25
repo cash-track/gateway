@@ -87,7 +87,7 @@ func TestConfigLoadUnexpectedApiUrl(t *testing.T) {
 
 	config := &Config{}
 
-	assert.Panics(t, func() {
+	assert.PanicsWithValue(t, `invalid API_URL "://api": parse "://api": missing protocol scheme`, func() {
 		config.Load()
 	})
 }

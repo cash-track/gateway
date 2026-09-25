@@ -20,11 +20,17 @@ func (r *Router) LiveHandler(ctx *fasthttp.RequestCtx) {
 // ReadyHandler check all dependency for service readiness.
 func (r *Router) ReadyHandler(ctx *fasthttp.RequestCtx) {
 	if err := r.api.Healthcheck(); err != nil {
-		slog.Warn("API not ready", "error", err)
+		if r.apiDown.CompareAndSwap(false, true) {
+			slog.Warn("API not ready", "error", err)
+		}
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 		ctx.SetBody(bodyApiNok)
 
 		return
+	}
+
+	if r.apiDown.CompareAndSwap(true, false) {
+		slog.Info("API ready again")
 	}
 
 	ctx.SetStatusCode(fasthttp.StatusOK)

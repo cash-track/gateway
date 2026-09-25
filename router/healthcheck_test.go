@@ -1,7 +1,10 @@
 package router
 
 import (
+	"bytes"
 	"fmt"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -53,4 +56,26 @@ func TestReadyHandlerFail(t *testing.T) {
 
 	assert.Equal(t, fasthttp.StatusInternalServerError, ctx.Response.StatusCode())
 	assert.Equal(t, "[api] nok", string(ctx.Response.Body()))
+}
+
+func TestReadyHandlerLogsOnlyStateChanges(t *testing.T) {
+	var out bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&out, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	ctrl := gomock.NewController(t)
+	a := mocks.NewApiHandlerMock(ctrl)
+	gomock.InOrder(
+		a.EXPECT().Healthcheck().Return(fmt.Errorf("down")).Times(2),
+		a.EXPECT().Healthcheck().Return(nil).Times(2),
+	)
+	r := New(a, mocks.NewCsrfHandlerMock(ctrl))
+
+	for range 4 {
+		r.ReadyHandler(&fasthttp.RequestCtx{})
+	}
+
+	assert.Equal(t, 1, strings.Count(out.String(), "API not ready"))
+	assert.Equal(t, 1, strings.Count(out.String(), "API ready again"))
 }

@@ -79,7 +79,7 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 
 	if p.secret == "" {
 		span.SetStatus(codes.Ok, "disabled")
-		slog.Info("captcha secret empty, skipping verify", "client_ip", clientIp)
+		slog.Debug("captcha secret empty, skipping verify", "client_ip", clientIp)
 		observeCaptchaResult(resultDisabled)
 
 		return true, nil
@@ -159,7 +159,7 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 		return false, nil
 	}
 
-	slog.Info("captcha verify ok", "client_ip", clientIp)
+	slog.Debug("captcha verify ok", "client_ip", clientIp)
 	span.SetStatus(codes.Ok, "ok")
 	observeCaptchaResult(resultSolved)
 

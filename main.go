@@ -47,8 +47,7 @@ func main() {
 	ctx := context.Background()
 
 	if _, tracerClose, err := traces.NewTracer(ctx); err != nil {
-		slog.Error("error creating OpenTelemetry tracer", "error", err)
-		os.Exit(1)
+		fatal("error creating OpenTelemetry tracer", err)
 	} else {
 		defer tracerClose()
 	}
@@ -114,8 +113,7 @@ func start(s *fasthttp.Server) {
 	slog.Info("listening on HTTP", "address", config.Global.Address)
 
 	if err := s.ListenAndServe(config.Global.Address); err != nil {
-		slog.Error("error in HTTP server", "error", err)
-		os.Exit(1)
+		fatal("error in HTTP server", err)
 	}
 }
 
@@ -123,8 +121,7 @@ func startTls(s *fasthttp.Server) {
 	slog.Info("listening on HTTPS", "address", config.Global.Address)
 
 	if err := s.ListenAndServeTLS(config.Global.Address, config.Global.HttpsCrt, config.Global.HttpsKey); err != nil {
-		slog.Error("error in HTTPS server", "error", err)
-		os.Exit(1)
+		fatal("error in HTTPS server", err)
 	}
 }
 
@@ -134,19 +131,24 @@ func getRedisClient() *redis.Client {
 	})
 
 	if err := redisotel.InstrumentTracing(client); err != nil {
-		slog.Error("error configuring OTEL instrument to redis", "error", err)
-		os.Exit(1)
+		fatal("error configuring OTEL instrument to redis", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), redisClientConnectTimeout)
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {
-		slog.Error("error connecting to redis", "error", err)
-		os.Exit(1)
+		fatal("error connecting to redis", err)
 	}
 
 	slog.Info("connected to redis", "address", config.Global.RedisConnection)
 
 	return client
+}
+
+// fatal logs err, flushes Sentry (os.Exit skips deferred Flush) and exits.
+func fatal(msg string, err error) {
+	slog.Error(msg, "error", err)
+	errtrack.Flush()
+	os.Exit(1)
 }

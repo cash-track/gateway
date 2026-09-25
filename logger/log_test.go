@@ -136,7 +136,7 @@ func TestFullForwarded(t *testing.T) {
 	logs := output.String()
 
 	assert.Contains(t, logs, `"msg":"request forwarded"`)
-	assert.Contains(t, logs, `"level":"INFO"`)
+	assert.Contains(t, logs, `"level":"DEBUG"`)
 	assert.Contains(t, logs, `"client_ip":"10.0.0.1"`)
 	assert.Contains(t, logs, `"method":"POST"`)
 	assert.Contains(t, logs, `"path":"/test"`)

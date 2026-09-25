@@ -151,7 +151,7 @@ func TestRefreshTokenFail(t *testing.T) {
 
 	newAuth, err := s.refreshToken(auth, context.TODO(), &fasthttp.RequestCtx{})
 
-	assert.Error(t, err)
+	assert.EqualError(t, err, "refresh token failed [status 500]")
 	assert.Empty(t, newAuth.AccessToken)
 	assert.Empty(t, newAuth.RefreshToken)
 }

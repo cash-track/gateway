@@ -220,7 +220,7 @@ func (r *RedisHandler) RotateTokenHandler(ctx *fasthttp.RequestCtx) {
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "unknown")
-		slog.Warn("CSRF token rotation error", "trace_id", traces.FindTraceId(ctx), "error", err)
+		slog.Error("CSRF token rotation failed", "trace_id", traces.FindTraceId(ctx), "error", err)
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 
 		return
@@ -326,10 +326,7 @@ func (r *RedisHandler) verify(ctx context.Context, userCtx userContext) error {
 	csrfRedisUp.Set(1)
 
 	if strings.Compare(userCtx.cookie.Token, cmd.Val()) != 0 {
-		// Do not log the requested/stored token values.
-		slog.Warn("CSRF token mismatch",
-			"trace_id", trace.SpanContextFromContext(ctx).TraceID().String())
-
+		// Logged once by Handler; the error must never carry the token values.
 		return fmt.Errorf("invalid CSRF token")
 	}
 
@@ -337,6 +334,7 @@ func (r *RedisHandler) verify(ctx context.Context, userCtx userContext) error {
 }
 
 func generateNewToken() string {
+	// NewV7 only fails if crypto/rand fails, which since Go 1.24 crashes the process instead.
 	token, _ := uuid.NewV7()
 
 	return token.String()
@@ -390,7 +388,8 @@ func (r *RedisHandler) getUserContextFromAccessToken(accessToken string) (string
 // expiry downstream.
 func (r *RedisHandler) parseClaims(accessToken string) (jwt.MapClaims, error) {
 	if r.jwks == nil || !r.jwks.Loaded() {
-		slog.Warn("CSRF: no JWKS key material loaded, accepting access token without signature verification")
+		// Debug: per-request; csrfSignatureVerificationFailOpenTotal and jwks bootstrap logs cover it.
+		slog.Debug("CSRF: no JWKS key material loaded, accepting access token without signature verification")
 		csrfSignatureVerificationFailOpenTotal.Inc()
 
 		return parseUnverifiedClaims(accessToken)

@@ -60,7 +60,7 @@ func (c *Config) Load() {
 
 	c.ApiUrl = getEnv("API_URL", "")
 	if u, err := url.Parse(c.ApiUrl); err != nil {
-		panic(fmt.Sprintf("Unexpected API_URL: %s", c.ApiURI))
+		panic(fmt.Sprintf("invalid API_URL %q: %v", c.ApiUrl, err))
 	} else {
 		c.ApiURI = u
 	}

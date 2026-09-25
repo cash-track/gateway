@@ -80,6 +80,7 @@ func NewHttp(
 }
 
 func (s *HttpService) setRequestURI(dest *fasthttp.URI, path []byte) {
+	// ApiUrl is validated by config.Load (it panics on a bad URL).
 	_ = dest.Parse([]byte(s.config.ApiUrl), nil)
 	dest.SetScheme(s.config.ApiURI.Scheme)
 	dest.SetHost(s.config.ApiURI.Host)

@@ -34,6 +34,7 @@ func (s *HttpService) refreshToken(
 	headers.WriteGatewayVersion(&req.Header, s.config.GitTag, s.config.GitSha)
 	headers.WriteGatewaySecret(&req.Header, s.config.GatewaySecret)
 
+	// Flat struct of strings: cannot fail.
 	data, _ := json.Marshal(cookie.Auth{RefreshToken: auth.RefreshToken})
 	req.SetBody(data)
 
@@ -77,8 +78,8 @@ func (s *HttpService) refreshToken(
 	}
 
 	if resp.StatusCode() != fasthttp.StatusOK {
-		// unexpected status
-		err = fmt.Errorf("refresh token failed [status %d]: %v", resp.StatusCode(), resp.Body())
+		// unexpected status; body omitted: the API logs its own failures
+		err = fmt.Errorf("refresh token failed [status %d]", resp.StatusCode())
 		span.SetStatus(codes.Error, "unknown")
 		span.RecordError(err)
 

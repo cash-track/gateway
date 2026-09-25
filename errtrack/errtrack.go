@@ -3,6 +3,7 @@ package errtrack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -16,7 +17,10 @@ import (
 	"github.com/cash-track/gateway/traces"
 )
 
-const flushTimeout = 2 * time.Second
+const (
+	flushTimeout   = 2 * time.Second
+	errtrackModule = "github.com/cash-track/gateway/errtrack"
+)
 
 // ignoredErrors are regexps matched against the event message; add expected noise here.
 var ignoredErrors = []string{
@@ -84,11 +88,16 @@ func (h *Handler) event(r slog.Record) *sentry.Event {
 
 	// sentry-go v0.49.0 dropped the top-level Extra field; a named context is the replacement.
 	extra := sentry.Context{}
+	exc := sentry.Exception{Type: r.Message, Stacktrace: callerStack()}
 
 	add := func(a slog.Attr) bool {
 		switch {
 		case a.Key == "error":
 			e.Message += ": " + a.Value.String()
+			exc.Value = a.Value.String()
+			if err, ok := a.Value.Any().(error); ok {
+				extra["error_type"] = rootType(err)
+			}
 		case a.Key == "trace_id":
 			h.tagTrace(e, a.Value.String())
 		}
@@ -105,11 +114,42 @@ func (h *Handler) event(r slog.Record) *sentry.Event {
 	}
 	r.Attrs(add)
 
+	// Exception carries the call-site stack (for panics: the panicking frames).
+	e.Exception = []sentry.Exception{exc}
+
 	if len(extra) > 0 {
 		e.Contexts["extra"] = extra
 	}
 
 	return e
+}
+
+// callerStack drops the logging frames (slog, Handle, event) so the innermost frame is the
+// slog call site. For panics sentry already cuts at runtime.gopanic, leaving the panicking frame.
+func callerStack() *sentry.Stacktrace {
+	st := sentry.NewStacktrace()
+	f := st.Frames
+	for len(f) > 0 && isLoggingFrame(f[len(f)-1]) {
+		f = f[:len(f)-1]
+	}
+	st.Frames = f
+
+	return st
+}
+
+var loggingFuncs = map[string]bool{"(*Handler).Handle": true, "(*Handler).event": true, "callerStack": true}
+
+func isLoggingFrame(f sentry.Frame) bool {
+	return f.Module == "log/slog" || f.Module == errtrackModule && loggingFuncs[f.Function]
+}
+
+// rootType names the innermost wrapped error type, e.g. *net.OpError.
+func rootType(err error) string {
+	for u := errors.Unwrap(err); u != nil; u = errors.Unwrap(err) {
+		err = u
+	}
+
+	return fmt.Sprintf("%T", err)
 }
 
 func (h *Handler) tagTrace(e *sentry.Event, id string) {

@@ -28,6 +28,7 @@ func NewErrorResponse(message string, err error, status int) ErrorResponse {
 }
 
 func (e ErrorResponse) Write(ctx *fasthttp.RequestCtx) {
+	// Strings and an int only: cannot fail.
 	body, _ := json.Marshal(e)
 	ctx.Response.SetBody(body)
 	ctx.Response.SetStatusCode(e.StatusCode)

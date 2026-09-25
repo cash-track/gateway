@@ -56,6 +56,7 @@ func (h *HttpHandler) AuthSetHandler(ctx *fasthttp.RequestCtx) {
 	h.CaptchaVerifyHandler(ctx)
 
 	if err := h.Login(ctx); err != nil {
+		slog.Error("login response handling failed", "trace_id", traces.FindTraceId(ctx), "error", err)
 		response.ByErrorAndStatus(err, fasthttp.StatusBadGateway).Write(ctx)
 	}
 
@@ -90,15 +91,10 @@ func (h *HttpHandler) CaptchaVerifyHandler(ctx *fasthttp.RequestCtx) {
 func (h *HttpHandler) AuthResetHandler(ctx *fasthttp.RequestCtx) {
 	auth := cookie.ReadAuthCookie(ctx)
 
+	// A failure is already logged by writeForwardError; cookies are cleared regardless.
 	err := h.FullForwardedHandlerWithBody(ctx, cookie.Auth{
 		RefreshToken: auth.RefreshToken,
 	})
-	if err != nil {
-		slog.Warn("logout: forwarding to backend failed, clearing cookies locally anyway",
-			"trace_id", traces.FindTraceId(ctx),
-			"error", err,
-		)
-	}
 
 	logoutResult := authResultSuccess
 	if err != nil {

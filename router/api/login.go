@@ -31,6 +31,7 @@ func (h *HttpHandler) Login(ctx *fasthttp.RequestCtx) error {
 		slog.Warn("csrf seed failed after login", "trace_id", traces.FindTraceId(ctx), "error", err)
 	}
 
+	// Marshaling a single-string struct cannot fail.
 	b, _ := h.newWebAppRedirect().ToJson()
 	ctx.Response.SetBody(b)
 

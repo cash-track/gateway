@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 	"strings"
 	"testing"
 
@@ -53,6 +55,32 @@ func TestHandlerCapturesErrorRecord(t *testing.T) {
 	assert.Equal(t, sentry.Context{"trace_id": validTraceId, "url": "http://grafana/" + validTraceId}, e.Contexts["tempo"])
 	assert.Equal(t, "gateway", e.Contexts["extra"]["component"])
 	assert.Contains(t, out.String(), "forward request failed")
+	assert.Len(t, e.Exception, 1)
+	assert.Equal(t, "forward request failed", e.Exception[0].Type)
+	assert.Equal(t, "dial tcp: refused", e.Exception[0].Value)
+	assert.NotEmpty(t, e.Exception[0].Stacktrace.Frames)
+	assert.Equal(t, "*errors.errorString", e.Contexts["extra"]["error_type"])
+}
+
+func TestHandlerErrorTypeUnwrapsToRoot(t *testing.T) {
+	h, events, _ := newTestHandler("")
+
+	slog.New(h).Error("boom", "error", fmt.Errorf("outer: %w", &net.OpError{Op: "dial", Err: errors.New("refused")}))
+
+	assert.Equal(t, "*errors.errorString", (*events)[0].Contexts["extra"]["error_type"])
+
+	slog.New(h).Error("boom", "error", fmt.Errorf("outer: %w", &net.DNSError{Err: "nx"}))
+
+	assert.Equal(t, "*net.DNSError", (*events)[1].Contexts["extra"]["error_type"])
+}
+
+func TestHandlerNonErrorValueHasNoErrorType(t *testing.T) {
+	h, events, _ := newTestHandler("")
+
+	slog.New(h).Error("boom", "error", "plain string")
+
+	assert.Equal(t, "plain string", (*events)[0].Exception[0].Value)
+	assert.NotContains(t, (*events)[0].Contexts["extra"], "error_type")
 }
 
 func TestHandlerExcludesClientIpFromExtra(t *testing.T) {
@@ -118,6 +146,33 @@ func TestRecoverHandlerReportsAndRepanics(t *testing.T) {
 	assert.Len(t, *events, 1)
 	assert.Equal(t, "panic while handling request", (*events)[0].Fingerprint[0])
 	assert.Contains(t, (*events)[0].Message, "kaboom")
+	assert.NotEmpty(t, (*events)[0].Exception[0].Stacktrace.Frames)
+}
+
+func TestHandlerStackEndsAtCallSite(t *testing.T) {
+	h, events, _ := newTestHandler("")
+
+	slog.New(h).Error("boom")
+
+	frames := (*events)[0].Exception[0].Stacktrace.Frames
+	assert.Equal(t, "TestHandlerStackEndsAtCallSite", frames[len(frames)-1].Function)
+	assert.True(t, frames[len(frames)-1].InApp)
+}
+
+func panickingFunc() { panic("kaboom") }
+
+func TestRecoverHandlerStackEndsAtPanic(t *testing.T) {
+	h, events, _ := newTestHandler("")
+	prev := slog.Default()
+	slog.SetDefault(slog.New(h))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	handler := RecoverHandler(func(*fasthttp.RequestCtx) { panickingFunc() })
+	assert.Panics(t, func() { handler(&fasthttp.RequestCtx{}) })
+
+	frames := (*events)[0].Exception[0].Stacktrace.Frames
+	assert.Equal(t, "panickingFunc", frames[len(frames)-1].Function)
+	assert.True(t, frames[len(frames)-1].InApp)
 }
 
 func TestFlush(t *testing.T) {

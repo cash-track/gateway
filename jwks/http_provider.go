@@ -118,6 +118,7 @@ func (p *HttpProvider) run(ctx context.Context) {
 // bootstrap retries with bounded backoff until a key is loaded or ctx is cancelled.
 func (p *HttpProvider) bootstrap(ctx context.Context) bool {
 	backoff := bootstrapBackoffMin
+	escalated := false
 
 	for {
 		err := p.fetch()
@@ -127,10 +128,17 @@ func (p *HttpProvider) bootstrap(ctx context.Context) bool {
 			return true
 		}
 
+		// Escalate once when backoff hits the cap: still no keys means CSRF signature
+		// checks stay fail-open, which needs a human. Other attempts stay warn.
+		level := slog.LevelWarn
+		if backoff == bootstrapBackoffMax && !escalated {
+			level, escalated = slog.LevelError, true
+		}
+
 		if err != nil {
-			slog.Warn("jwks initial fetch failed, retrying in background", "error", err, "retry_in", backoff.String())
+			slog.Log(ctx, level, "jwks initial fetch failed, retrying in background", "error", err, "retry_in", backoff.String())
 		} else {
-			slog.Warn("jwks fetch returned no usable keys, retrying in background", "retry_in", backoff.String())
+			slog.Log(ctx, level, "jwks fetch returned no usable keys, retrying in background", "retry_in", backoff.String())
 		}
 
 		select {
@@ -252,6 +260,7 @@ func (p *HttpProvider) fetch() error {
 }
 
 func (p *HttpProvider) setRequestURI(dest *fasthttp.URI) {
+	// ApiUrl is validated by config.Load (it panics on a bad URL).
 	_ = dest.Parse([]byte(p.config.ApiUrl), nil)
 	dest.SetScheme(p.config.ApiURI.Scheme)
 	dest.SetHost(p.config.ApiURI.Host)

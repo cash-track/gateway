@@ -1,14 +1,17 @@
 package jwks
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -472,10 +475,18 @@ func TestBootstrapRetriesThroughAllBranchesThenLoads(t *testing.T) {
 	// Genuinely waits through multiple retry cycles (backoff shrunk above) to exercise
 	// the failure branch, the succeeded-but-empty branch, the backoff-exceeds-cap clamp,
 	// and the terminal succeeded-and-loaded return - all real behaviour of the loop.
+	var out bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&out, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
 	ok := p.bootstrap(context.Background())
 
 	assert.True(t, ok)
 	assert.True(t, p.Loaded())
+	// 4 failed attempts, escalated to error only once, at the backoff cap.
+	assert.Equal(t, 1, strings.Count(out.String(), `"level":"ERROR"`))
+	assert.Equal(t, 4, strings.Count(out.String(), "retrying in background"))
 }
 
 func TestBootstrapStopsOnContextCancellation(t *testing.T) {

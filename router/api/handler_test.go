@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -95,6 +96,7 @@ func TestAuthSetHandlerCaptchaError(t *testing.T) {
 }
 
 func TestAuthSetHandlerLoginError(t *testing.T) {
+	output := setTestLogger(t)
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
@@ -114,6 +116,8 @@ func TestAuthSetHandlerLoginError(t *testing.T) {
 	h.AuthSetHandler(&ctx)
 
 	assert.Equal(t, fasthttp.StatusBadGateway, ctx.Response.StatusCode())
+	assert.Contains(t, output.String(), `"level":"ERROR","msg":"login response handling failed"`)
+	assert.NotContains(t, output.String(), "new_access_token")
 }
 
 func TestAuthResetHandler(t *testing.T) {
@@ -139,6 +143,7 @@ func TestAuthResetHandler(t *testing.T) {
 // Logout stays effective when the forward fails, so an open breaker does not turn every
 // logout into a 503 for the whole timeout window.
 func TestAuthResetHandlerForwardError(t *testing.T) {
+	output := setTestLogger(t)
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
 	c := mocks.NewCaptchaProviderMock(ctrl)
@@ -154,6 +159,8 @@ func TestAuthResetHandlerForwardError(t *testing.T) {
 
 	h.AuthResetHandler(&ctx)
 
+	// Logged once, by writeForwardError.
+	assert.Equal(t, 1, strings.Count(output.String(), "\n"))
 	assert.Equal(t, fasthttp.StatusOK, ctx.Response.StatusCode())
 	assert.Empty(t, ctx.Response.Header.Peek(headers.RetryAfter))
 	assert.JSONEq(t, `{"redirectUrl":""}`, string(ctx.Response.Body()))
