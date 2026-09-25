@@ -44,6 +44,8 @@ type Config struct {
 
 	GitTag string
 	GitSha string
+
+	SentryTempoUrl string
 }
 
 var Global Config
@@ -82,6 +84,8 @@ func (c *Config) Load() {
 
 	c.GitTag = getEnv("GIT_TAG", "")
 	c.GitSha = getEnv("GIT_COMMIT", "")
+
+	c.SentryTempoUrl = getEnv("SENTRY_TEMPO_URL", "")
 }
 
 func getEnv(key, def string) string {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/cash-track/gateway/captcha"
 	"github.com/cash-track/gateway/config"
+	"github.com/cash-track/gateway/errtrack"
 	"github.com/cash-track/gateway/headers"
 	"github.com/cash-track/gateway/http/retryhttp"
 	"github.com/cash-track/gateway/jwks"
@@ -32,13 +33,18 @@ const (
 )
 
 func main() {
+	config.Global.Load()
+
 	// Debug level so DebugRequest/DebugResponse (gated by config.Global.DebugHttp) can emit.
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
-	slog.SetDefault(slog.New(handler).With("component", "gateway"))
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
+	slog.SetDefault(slog.New(errtrack.NewHandler(jsonHandler, config.Global.SentryTempoUrl)).With("component", "gateway"))
+
+	if err := errtrack.Init(config.Global.GitTag); err != nil {
+		slog.Warn("sentry disabled", "error", err)
+	}
+	defer errtrack.Flush()
 
 	ctx := context.Background()
-
-	config.Global.Load()
 
 	if _, tracerClose, err := traces.NewTracer(ctx); err != nil {
 		slog.Error("error creating OpenTelemetry tracer", "error", err)
@@ -81,7 +87,7 @@ func main() {
 }
 
 // buildHandler chains the middleware applied to every request, outermost first:
-// traces -> logger -> cors -> headers -> csrf (if enabled) -> inner.
+// traces -> recover -> logger -> cors -> headers -> csrf (if enabled) -> inner.
 //
 // headers must wrap csrf, not the reverse: csrf short-circuits a validation failure with a
 // 417 without calling its inner handler, which would leave that response with no trace ID
@@ -94,6 +100,7 @@ func buildHandler(inner fasthttp.RequestHandler, csrf csrfHandler.Handler) fasth
 	h = headers.Handler(h)
 	h = headers.CorsHandler(h)
 	h = logger.DebugHandler(h)
+	h = errtrack.RecoverHandler(h)
 	h = traces.TraceHandler(h)
 
 	if config.Global.Compress {

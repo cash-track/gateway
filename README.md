@@ -15,6 +15,12 @@ $ make run
 - HTTP `GET [host]/live` for liveness check if service started
 - HTTP `GET [host]/ready` for readiness check if all dependencies ok
 
+## Error tracking
+
+`ERROR`-level logs and recovered panics are reported to Sentry. `SENTRY_DSN` (empty disables
+it), `SENTRY_ENVIRONMENT`, and `SENTRY_TEMPO_URL` (a Grafana Tempo link template with a
+`{trace_id}` placeholder) — see `.env.example`.
+
 ## Push to registry
 
 ```bash

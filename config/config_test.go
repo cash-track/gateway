@@ -22,6 +22,7 @@ func TestConfigLoad(t *testing.T) {
 	_ = os.Setenv("GIT_TAG", "v1.2.3")
 	_ = os.Setenv("GIT_COMMIT", "abc123def456")
 	t.Setenv("TRUSTED_PROXIES", "")
+	t.Setenv("SENTRY_TEMPO_URL", "http://grafana/{trace_id}")
 
 	config := &Config{}
 	config.Load()
@@ -64,6 +65,8 @@ func TestConfigLoad(t *testing.T) {
 
 	assert.Equal(t, "v1.2.3", config.GitTag)
 	assert.Equal(t, "abc123def456", config.GitSha)
+
+	assert.Equal(t, "http://grafana/{trace_id}", config.SentryTempoUrl)
 }
 
 func TestConfigLoadGitInfoDefaultsEmpty(t *testing.T) {
