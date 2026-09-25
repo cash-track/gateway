@@ -13,6 +13,7 @@ import (
 
 	"github.com/cash-track/gateway/captcha"
 	"github.com/cash-track/gateway/config"
+	"github.com/cash-track/gateway/errtrack"
 	"github.com/cash-track/gateway/headers"
 	"github.com/cash-track/gateway/http/retryhttp"
 	"github.com/cash-track/gateway/jwks"
@@ -32,17 +33,21 @@ const (
 )
 
 func main() {
+	config.Global.Load()
+
 	// Debug level so DebugRequest/DebugResponse (gated by config.Global.DebugHttp) can emit.
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
-	slog.SetDefault(slog.New(handler).With("component", "gateway"))
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
+	slog.SetDefault(slog.New(errtrack.NewHandler(jsonHandler, config.Global.SentryTempoUrl)).With("component", "gateway"))
+
+	if err := errtrack.Init(config.Global.GitTag); err != nil {
+		slog.Warn("sentry disabled", "error", err)
+	}
+	defer errtrack.Flush()
 
 	ctx := context.Background()
 
-	config.Global.Load()
-
 	if _, tracerClose, err := traces.NewTracer(ctx); err != nil {
-		slog.Error("error creating OpenTelemetry tracer", "error", err)
-		os.Exit(1)
+		fatal("error creating OpenTelemetry tracer", err)
 	} else {
 		defer tracerClose()
 	}
@@ -81,7 +86,7 @@ func main() {
 }
 
 // buildHandler chains the middleware applied to every request, outermost first:
-// traces -> logger -> cors -> headers -> csrf (if enabled) -> inner.
+// traces -> recover -> logger -> cors -> headers -> csrf (if enabled) -> inner.
 //
 // headers must wrap csrf, not the reverse: csrf short-circuits a validation failure with a
 // 417 without calling its inner handler, which would leave that response with no trace ID
@@ -94,6 +99,7 @@ func buildHandler(inner fasthttp.RequestHandler, csrf csrfHandler.Handler) fasth
 	h = headers.Handler(h)
 	h = headers.CorsHandler(h)
 	h = logger.DebugHandler(h)
+	h = errtrack.RecoverHandler(h)
 	h = traces.TraceHandler(h)
 
 	if config.Global.Compress {
@@ -107,8 +113,7 @@ func start(s *fasthttp.Server) {
 	slog.Info("listening on HTTP", "address", config.Global.Address)
 
 	if err := s.ListenAndServe(config.Global.Address); err != nil {
-		slog.Error("error in HTTP server", "error", err)
-		os.Exit(1)
+		fatal("error in HTTP server", err)
 	}
 }
 
@@ -116,8 +121,7 @@ func startTls(s *fasthttp.Server) {
 	slog.Info("listening on HTTPS", "address", config.Global.Address)
 
 	if err := s.ListenAndServeTLS(config.Global.Address, config.Global.HttpsCrt, config.Global.HttpsKey); err != nil {
-		slog.Error("error in HTTPS server", "error", err)
-		os.Exit(1)
+		fatal("error in HTTPS server", err)
 	}
 }
 
@@ -127,19 +131,24 @@ func getRedisClient() *redis.Client {
 	})
 
 	if err := redisotel.InstrumentTracing(client); err != nil {
-		slog.Error("error configuring OTEL instrument to redis", "error", err)
-		os.Exit(1)
+		fatal("error configuring OTEL instrument to redis", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), redisClientConnectTimeout)
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {
-		slog.Error("error connecting to redis", "error", err)
-		os.Exit(1)
+		fatal("error connecting to redis", err)
 	}
 
 	slog.Info("connected to redis", "address", config.Global.RedisConnection)
 
 	return client
+}
+
+// fatal logs err, flushes Sentry (os.Exit skips deferred Flush) and exits.
+func fatal(msg string, err error) {
+	slog.Error(msg, "error", err)
+	errtrack.Flush()
+	os.Exit(1)
 }

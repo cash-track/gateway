@@ -11,6 +11,7 @@ func (h *HttpHandler) Logout(ctx *fasthttp.RequestCtx) {
 	// delete branch and cannot fail — error structurally impossible here.
 	_ = cookie.Auth{}.WriteCookie(ctx)
 
+	// Marshaling a single-string struct cannot fail.
 	b, _ := h.newWebsiteRedirect().ToJson()
 
 	ctx.Response.SetBody(b)

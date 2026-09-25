@@ -44,6 +44,8 @@ type Config struct {
 
 	GitTag string
 	GitSha string
+
+	SentryTempoUrl string
 }
 
 var Global Config
@@ -58,7 +60,7 @@ func (c *Config) Load() {
 
 	c.ApiUrl = getEnv("API_URL", "")
 	if u, err := url.Parse(c.ApiUrl); err != nil {
-		panic(fmt.Sprintf("Unexpected API_URL: %s", c.ApiURI))
+		panic(fmt.Sprintf("invalid API_URL %q: %v", c.ApiUrl, err))
 	} else {
 		c.ApiURI = u
 	}
@@ -82,6 +84,8 @@ func (c *Config) Load() {
 
 	c.GitTag = getEnv("GIT_TAG", "")
 	c.GitSha = getEnv("GIT_COMMIT", "")
+
+	c.SentryTempoUrl = getEnv("SENTRY_TEMPO_URL", "")
 }
 
 func getEnv(key, def string) string {

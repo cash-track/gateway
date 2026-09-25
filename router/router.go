@@ -1,6 +1,8 @@
 package router
 
 import (
+	"sync/atomic"
+
 	"github.com/fasthttp/router"
 
 	"github.com/cash-track/gateway/router/api"
@@ -12,6 +14,9 @@ type Router struct {
 
 	api  api.Handler
 	csrf csrf.Handler
+
+	// apiDown dedups readiness logs: probes run every few seconds.
+	apiDown atomic.Bool
 }
 
 func New(api api.Handler, csrf csrf.Handler) *Router {

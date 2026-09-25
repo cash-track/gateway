@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/go-redis/redismock/v9"
@@ -340,7 +341,8 @@ func TestHandlerLogsTokenMismatchWithoutLeakingTokenValues(t *testing.T) {
 
 	logs := output.String()
 
-	assert.Contains(t, logs, "CSRF token mismatch")
+	assert.Equal(t, 1, strings.Count(logs, "CSRF token validation error"))
+	assert.Contains(t, logs, "invalid CSRF token")
 	assert.NotContains(t, logs, requestedToken)
 	assert.NotContains(t, logs, storedToken)
 

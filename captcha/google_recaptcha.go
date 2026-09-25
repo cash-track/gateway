@@ -79,7 +79,7 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 
 	if p.secret == "" {
 		span.SetStatus(codes.Ok, "disabled")
-		slog.Info("captcha secret empty, skipping verify", "client_ip", clientIp)
+		slog.Debug("captcha secret empty, skipping verify", "client_ip", clientIp)
 		observeCaptchaResult(resultDisabled)
 
 		return true, nil
@@ -115,7 +115,11 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 	if err := p.client.Do(req, resp); err != nil {
 		// This returns a 500 to the caller, so it needs a log line and not just a span:
 		// the trace is sampled, the 500 is not.
-		slog.Error("captcha verify request failed", "client_ip", clientIp, "error", err)
+		slog.Error("captcha verify request failed",
+			"client_ip", clientIp,
+			"trace_id", span.SpanContext().TraceID().String(),
+			"error", err,
+		)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "request error")
 		observeCaptchaResult(resultError)
@@ -130,6 +134,7 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 		slog.Error("captcha verify response unreadable",
 			"client_ip", clientIp,
 			"status", resp.StatusCode(),
+			"trace_id", span.SpanContext().TraceID().String(),
 			"error", err,
 		)
 		span.RecordError(err)
@@ -154,7 +159,7 @@ func (p *GoogleReCaptchaProvider) Verify(ctx *fasthttp.RequestCtx) (bool, error)
 		return false, nil
 	}
 
-	slog.Info("captcha verify ok", "client_ip", clientIp)
+	slog.Debug("captcha verify ok", "client_ip", clientIp)
 	span.SetStatus(codes.Ok, "ok")
 	observeCaptchaResult(resultSolved)
 

@@ -74,5 +74,6 @@ func FullForwarded(
 		return
 	}
 
-	slog.Info("request forwarded", attrs...)
+	// Per-request access log: debug keeps it in Loki without inflating the info level.
+	slog.Debug("request forwarded", attrs...)
 }
