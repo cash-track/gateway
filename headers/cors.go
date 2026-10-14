@@ -120,6 +120,22 @@ func writeActualCorsHeaders(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set(AccessControlExposeHeaders, strings.Join(CorsExposedHeaders, ","))
 }
 
+// IsCrossSiteRequest reports whether a browser marked ctx as sent by a foreign site:
+// an Origin outside allowed, or Sec-Fetch-Site: cross-site when Origin is absent.
+// Same-origin requests and non-browser clients (neither header) pass.
+func IsCrossSiteRequest(ctx *fasthttp.RequestCtx, allowed map[string]bool) bool {
+	fetchSite := string(ctx.Request.Header.Peek(SecFetchSite))
+	if fetchSite == "same-origin" {
+		return false
+	}
+
+	if origin := requestOrigin(ctx); origin != "" {
+		return !allowed[origin]
+	}
+
+	return fetchSite == "cross-site"
+}
+
 func requestOrigin(ctx *fasthttp.RequestCtx) string {
 	return strings.ToLower(string(ctx.Request.Header.Peek(Origin)))
 }

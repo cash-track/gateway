@@ -28,6 +28,7 @@ const (
 	Referer                       = "Referer"
 	ReferrerPolicy                = "Referrer-Policy"
 	RetryAfter                    = "Retry-After"
+	SecFetchSite                  = "Sec-Fetch-Site"
 	StrictTransportSecurity       = "Strict-Transport-Security"
 	UserAgent                     = "User-Agent"
 	Vary                          = "Vary"

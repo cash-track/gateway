@@ -257,6 +257,8 @@ paths:
                 $ref: "#/components/schemas/RedirectResponse"
         "400":
           $ref: "#/components/responses/CaptchaError"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
         "422":
           $ref: "#/components/responses/BackendValidationError"
         "500":
@@ -318,6 +320,8 @@ paths:
                 $ref: "#/components/schemas/RedirectResponse"
         "400":
           $ref: "#/components/responses/CaptchaError"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
         "422":
           $ref: "#/components/responses/BackendValidationError"
         "500":
@@ -380,6 +384,8 @@ paths:
                 $ref: "#/components/schemas/RedirectResponse"
         "400":
           $ref: "#/components/responses/CaptchaError"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
         "500":
           $ref: "#/components/responses/InternalError"
         "502":
@@ -435,6 +441,8 @@ paths:
                 $ref: "#/components/schemas/RedirectResponse"
         "400":
           $ref: "#/components/responses/CaptchaError"
+        "403":
+          $ref: "#/components/responses/ForbiddenOrigin"
         "500":
           $ref: "#/components/responses/InternalError"
         "502":
@@ -1175,6 +1183,35 @@ components:
             $ref: "#/components/schemas/Error"
           example:
             message: Captcha validation unsuccessful. Please try again.
+            error: ""
+
+    ForbiddenOrigin:
+      description: |
+        Login CSRF protection on the session-establishing routes. Rejected before captcha
+        and forwarding when the `Origin` header is present and not in `CORS_ALLOWED_ORIGINS`,
+        or, without `Origin`, when `Sec-Fetch-Site` is `cross-site`. `Sec-Fetch-Site:
+        same-origin` always passes; clients sending neither header (non-browser) pass.
+      headers:
+        X-Ct-Gateway-Version:
+          $ref: "#/components/headers/GatewayVersion"
+        X-Ct-Gateway-Sha:
+          $ref: "#/components/headers/GatewaySha"
+        Strict-Transport-Security:
+          $ref: "#/components/headers/StrictTransportSecurity"
+        X-Content-Type-Options:
+          $ref: "#/components/headers/XContentTypeOptions"
+        X-Frame-Options:
+          $ref: "#/components/headers/XFrameOptions"
+        Referrer-Policy:
+          $ref: "#/components/headers/ReferrerPolicy"
+        Content-Security-Policy:
+          $ref: "#/components/headers/ContentSecurityPolicy"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            message: Request origin is not allowed.
             error: ""
 
     CsrfError:

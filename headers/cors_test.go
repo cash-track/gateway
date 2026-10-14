@@ -254,3 +254,39 @@ func TestCorsHandlerOptionsWithoutRequestMethodIsNotPreflight(t *testing.T) {
 	assert.Empty(t, ctx.Response.Header.Peek(AccessControlMaxAge))
 	assert.Equal(t, 1, *calls, "an OPTIONS request without Access-Control-Request-Method must fall through")
 }
+
+func TestIsCrossSiteRequest(t *testing.T) {
+	allowed := map[string]bool{"https://cash-track.app": true}
+
+	tests := []struct {
+		name      string
+		origin    string
+		fetchSite string
+		want      bool
+	}{
+		{"allowed origin", "https://cash-track.app", "same-site", false},
+		{"allowed origin mixed case", "https://Cash-Track.app", "", false},
+		{"foreign origin", "https://evil.example", "cross-site", true},
+		{"foreign origin without fetch metadata", "https://evil.example", "", true},
+		{"opaque origin", "null", "cross-site", true},
+		{"same-origin wins over unlisted origin", "https://gateway.cash-track.app", "same-origin", false},
+		{"no origin cross-site", "", "cross-site", true},
+		{"no origin same-site", "", "same-site", false},
+		{"no origin user navigation", "", "none", false},
+		{"non-browser client", "", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := fasthttp.RequestCtx{}
+			if tt.origin != "" {
+				ctx.Request.Header.Set(Origin, tt.origin)
+			}
+			if tt.fetchSite != "" {
+				ctx.Request.Header.Set(SecFetchSite, tt.fetchSite)
+			}
+
+			assert.Equal(t, tt.want, IsCrossSiteRequest(&ctx, allowed))
+		})
+	}
+}
