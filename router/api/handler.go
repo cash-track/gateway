@@ -53,6 +53,19 @@ func NewHttp(config config.Config, service api.Service, captcha captcha.Provider
 }
 
 func (h *HttpHandler) AuthSetHandler(ctx *fasthttp.RequestCtx) {
+	// Login CSRF: a foreign page must not be able to log the victim into an attacker account.
+	// Not left to the captcha header's preflight, which disappears when captcha is disabled.
+	if headers.IsCrossSiteRequest(ctx, h.config.CorsAllowedOrigins) {
+		slog.Warn("auth request from disallowed origin rejected",
+			"client_ip", headers.GetClientIPFromContext(ctx),
+			"origin", string(ctx.Request.Header.Peek(headers.Origin)),
+		)
+		response.NewErrorResponse("Request origin is not allowed.", nil, fasthttp.StatusForbidden).Write(ctx)
+		recordAuthAttempt(authActionFromPath(ctx.Path()), authResultFailure)
+
+		return
+	}
+
 	h.CaptchaVerifyHandler(ctx)
 
 	if err := h.Login(ctx); err != nil {

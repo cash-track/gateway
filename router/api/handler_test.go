@@ -61,6 +61,44 @@ func TestAuthSetHandler(t *testing.T) {
 	assert.Contains(t, string(ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName)), "new_access_token")
 }
 
+func TestAuthSetHandlerAllowedOrigin(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	s := mocks.NewApiServiceMock(ctrl)
+	c := mocks.NewCaptchaProviderMock(ctrl)
+	h := NewHttp(config.Config{CorsAllowedOrigins: map[string]bool{"https://cash-track.app": true}}, s, c, &mockCSRFSeeder{})
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+	ctx.Request.Header.Set(headers.Origin, "https://cash-track.app")
+
+	c.EXPECT().Verify(gomock.Any()).Return(false, nil)
+
+	h.AuthSetHandler(&ctx)
+
+	assert.Equal(t, fasthttp.StatusBadRequest, ctx.Response.StatusCode())
+}
+
+func TestAuthSetHandlerCrossSiteOrigin(t *testing.T) {
+	output := setTestLogger(t)
+	ctrl := gomock.NewController(t)
+	s := mocks.NewApiServiceMock(ctrl)
+	c := mocks.NewCaptchaProviderMock(ctrl)
+	h := NewHttp(config.Config{CorsAllowedOrigins: map[string]bool{"https://cash-track.app": true}}, s, c, &mockCSRFSeeder{})
+
+	ctx := fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fasthttp.MethodPost)
+	ctx.Request.SetRequestURI("/api/auth/provider/google")
+	ctx.Request.Header.Set(headers.Origin, "https://evil.example")
+
+	// No Verify/ForwardRequest expectations: gomock fails the test if either is called.
+	h.AuthSetHandler(&ctx)
+
+	assert.Equal(t, fasthttp.StatusForbidden, ctx.Response.StatusCode())
+	assert.Empty(t, ctx.Response.Header.PeekCookie(cookie.AccessTokenCookieName))
+	assert.Contains(t, output.String(), `"msg":"auth request from disallowed origin rejected"`)
+	assert.Contains(t, output.String(), `"origin":"https://evil.example"`)
+}
+
 func TestAuthSetHandlerCaptchaFail(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	s := mocks.NewApiServiceMock(ctrl)
